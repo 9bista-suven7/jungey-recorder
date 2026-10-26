@@ -384,6 +384,9 @@ async function handleDisplayMedia(_request, callback) {
 let lastSource = null;
 /** Set while presenting a whole screen: the area the ink layer covers. */
 let desk = null;
+/** A drawing tool is picked (the ink layer takes the mouse). */
+let drawing = false;
+let wheelTimer = null;
 /** Child windows by name: jungey-ink (ink layer), jungey-cam (face bubble), jungey-mini (controls). */
 const kids = new Map();
 const DESK_KEYS = ['Alt+Shift+D'];
@@ -441,6 +444,8 @@ ipcMain.handle('desk:begin', () => {
 ipcMain.handle('desk:end', () => {
   shortcuts(DESK_KEYS, false);
   shortcuts(DRAW_KEYS, false);
+  drawing = false;
+  clearTimeout(wheelTimer);
   if (!desk) return;
   desk = null;
   if (win) {
@@ -452,12 +457,27 @@ ipcMain.handle('desk:end', () => {
 
 ipcMain.on('desk:draw', (_e, on) => {
   const ink = kid('jungey-ink');
+  drawing = !!on;
+  clearTimeout(wheelTimer);
   if (!ink) return;
   ink.setIgnoreMouseEvents(!on);
   // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
   shortcuts(DRAW_KEYS, !!on, (k) => (k === 'Escape' ? 'mouse' : 'undo'));
   restack();
 });
+
+// Scrolling while drawing: let the mouse through to the app underneath for a moment, then draw again.
+// Caught here as the wheel arrives, not in the page, so the next notch already scrolls.
+function scrollThrough() {
+  const ink = kid('jungey-ink');
+  if (!ink || !drawing) return;
+  ink.setIgnoreMouseEvents(true);
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => {
+    const k = kid('jungey-ink');
+    if (k && drawing) k.setIgnoreMouseEvents(false);
+  }, 900);
+}
 
 ipcMain.on('desk:moveCam', (_e, pos) => {
   const cam = kid('jungey-cam');
@@ -559,6 +579,7 @@ function createWindow() {
     if (frameName === 'jungey-ink') {
       // Clicks go through to your apps until you pick a drawing tool.
       child.setIgnoreMouseEvents(true);
+      child.webContents.on('input-event', (_e, input) => input.type === 'mouseWheel' && scrollThrough());
       if (desk) child.setBounds(desk.bounds);
     }
     // Windows and macOS leave the controls out of the recording.
