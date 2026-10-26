@@ -42,6 +42,8 @@ export interface Bridge {
     saveCopy(id: string): Promise<string | null>;
     trim(args: { id: string; start: number; end: number; title: string }): Promise<VideoMeta>;
   };
+  /** Yearly figures for a country from the World Bank (inflation, GDP growth, ...). */
+  worldBank(args: { country: string; indicator: string; years: number }): Promise<{ country: string; points: { year: string; value: number }[] }>;
   onProgress(cb: (p: { id: string; progress: number }) => void): () => void;
   onPickSource(cb: (list: ScreenSource[]) => void): () => void;
   pickSource(id: string | null): void;
@@ -101,6 +103,15 @@ function webBridge(): Bridge {
       trim: async () => {
         throw new Error('Trimming needs the desktop app');
       },
+    },
+    worldBank: async ({ country, indicator, years }) => {
+      const res = await fetch(`https://api.worldbank.org/v2/country/${country}/indicator/${indicator}?format=json&per_page=${years}&mrv=${years}`);
+      const json = await res.json();
+      const rows: { date: string; value: number | null; country: { value: string } }[] = Array.isArray(json?.[1]) ? json[1] : [];
+      return {
+        country: rows[0]?.country.value ?? country,
+        points: rows.filter((r) => typeof r.value === 'number').map((r) => ({ year: r.date, value: r.value as number })).sort((a, b) => a.year.localeCompare(b.year)),
+      };
     },
     onProgress: none,
     onPickSource: none,

@@ -563,3 +563,33 @@ input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px;
 .template-card .thumb-canvas { width: 100% !important; height: auto !important; aspect-ratio: 16 / 9; border-radius: 9px; margin-bottom: 4px; }
 .template-card small { color: var(--muted); }
 .template-blank { display: grid; place-items: center; aspect-ratio: 16 / 9; border-radius: 9px; border: 2px dashed var(--line-2); color: var(--faint); font-size: 36px; margin-bottom: 4px; }
+
+/* ------------------------------------------------------------------ charts */
+
+.chart-glyph { display: grid; place-items: center; width: 48px; height: 44px; color: #8fb4ff; }
+.chart-modal { width: min(1180px, 100%); padding: 18px; }
+.chart-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; }
+.chart-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.chart-fields { display: flex; gap: 10px; }
+.chart-fields label, .chart-data-label { display: flex; flex-direction: column; gap: 4px; flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
+.chart-fields label.narrow { flex: 0 0 110px; }
+.chart-data-label span { font-weight: 500; color: var(--faint); }
+.chart-data {
+  min-height: 170px; resize: vertical; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-elev);
+  font: 500 13px/1.5 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; tab-size: 14; user-select: text; white-space: pre;
+}
+.chart-data:focus { outline: none; border-color: var(--accent); }
+.chart-error { margin: 0; color: #ff8b97; font-size: 13px; }
+.chart-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chart-row select.text-field { flex: 1; min-width: 0; }
+.chart-row select.narrow { flex: 0 0 110px; }
+.chart-tip { flex: 1; min-width: 200px; color: var(--faint); font-size: 12px; user-select: text; overflow-wrap: anywhere; }
+.chart-fields .text-field { flex: none; height: 34px; }
+.chart-real { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--bg-elev); border: 1px solid var(--line); }
+.chart-real .menu-label { display: flex; align-items: center; gap: 6px; }
+select.text-field { height: 34px; color: var(--text); }
+.chart-side { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.chart-preview { width: 100%; height: auto; border-radius: 14px; background: #fbfbf9; }
+.chart-preview.dark { background: #14161f; }
+.chart-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 980px) { .chart-editor { grid-template-columns: 1fr; } }

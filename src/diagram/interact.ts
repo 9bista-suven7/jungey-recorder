@@ -108,11 +108,28 @@ function placeBeside(from: DiagramNode, side: Side, w: number, h: number): Pt {
     }
   }
   // Crowded: the nearest free spot anywhere on the page.
-  const want = at(side);
+  return freeSpotNear(at(side), w, h);
+}
+
+/** Centre of the free w×h spot on the page closest to `want` (or `want` if the page is full). */
+function freeSpotNear(want: Pt, w: number, h: number): Pt {
+  const nodes = [...nodesNow(), ...cameraObstacle()];
+  const W = compositor.W || 1920, H = compositor.H || 1080;
+  const fits = (c: Pt) =>
+    c.x - w / 2 >= 20 && c.y - h / 2 >= 20 && c.x + w / 2 <= W - 20 && c.y + h / 2 + 50 <= H - 20 &&
+    !overlaps({ x: c.x - w / 2, y: c.y - h / 2, w, h: h + (h > 100 ? 50 : 0) }, nodes);
+  if (fits(want)) return want;
   const spots: Pt[] = [];
   for (let y = 80; y <= H - 80; y += 40) for (let x = 80; x <= W - 80; x += 40) spots.push({ x, y });
   spots.sort((a, b) => Math.hypot(a.x - want.x, a.y - want.y) - Math.hypot(b.x - want.x, b.y - want.y));
-  return spots.find(fits) ?? want;
+  const free = spots.find(fits);
+  if (free) return free;
+  // The page is full (big charts): cascade so each new one stays visible and easy to grab.
+  for (let k = 1; k < 12; k++) {
+    const c = { x: want.x + k * 64, y: want.y + k * 64 };
+    if (!nodes.some((n) => Math.abs(n.x + n.w / 2 - c.x) < 32 && Math.abs(n.y + n.h / 2 - c.y) < 32)) return c;
+  }
+  return want;
 }
 
 /** The camera bubble's corner counts as taken, so new boxes don't land under your face. */
@@ -146,11 +163,13 @@ export function addFromLibrary(shape: NodeShape, extra: Partial<DiagramNode> = {
   const nodes = nodesNow();
   const sel = s.selected.length === 1 ? nodes.find((n) => n.id === s.selected[0] && canConnect(n)) : undefined;
   const [w, h] = DEFAULT_SIZE[shape];
-  const c = at ?? (sel ? placeBeside(sel, 'right', w, h) : viewCenter());
+  const c = at ?? (sel ? placeBeside(sel, 'right', w, h) : freeSpotNear(viewCenter(), w, h));
   const node = newNode(shape, c.x, c.y, { step: nextStep(), ...extra });
   actions.addDiagram([node], sel && !at && canConnect(node) ? [newEdge(sel.id, node.id)] : []);
   useStore.setState({ tool: 'select' });
-  ui.setState({ selected: [node.id], editing: shape === 'icon' || shape === 'dot' ? null : node.id });
+  // A new chart goes straight to its data; other boxes straight to typing their name.
+  if (shape === 'chart') ui.setState({ selected: [node.id], editing: null, chartEditing: node.id });
+  else ui.setState({ selected: [node.id], editing: shape === 'icon' || shape === 'dot' ? null : node.id });
   return node;
 }
 
@@ -365,10 +384,17 @@ export function selectUp(p: Pt, cancelled = false) {
 export function selectDoubleClick(p: Pt) {
   if (ui.getState().ordering !== null) return;
   const n = nodeAt(p);
-  if (n) return ui.setState({ selected: [n.id], editing: n.id });
+  if (n) return editNode(n.id);
   const e = edgeAt(p);
   if (e) return ui.setState({ selected: [e.id], editing: e.id });
   addFromLibrary('rounded', {}, p);
+}
+
+/** Double-click / Enter: type a box's name, or open a chart's data. */
+export function editNode(id: string) {
+  const n = nodesNow().find((x) => x.id === id);
+  if (n?.shape === 'chart') ui.setState({ selected: [id], chartEditing: id, editing: null });
+  else ui.setState({ selected: [id], editing: id });
 }
 
 // ---------------------------------------------------------------- keyboard actions

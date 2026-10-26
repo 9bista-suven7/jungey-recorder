@@ -1,13 +1,23 @@
 // Right-hand panel: "Add" (shapes + icons by sector, with search) and "Steps" (reveal order).
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { ArrowDown, ArrowUp, LayoutTemplate, MousePointerClick, Play, Search, Sparkles, Trash, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChartArea, ChartCandlestick, ChartColumn, ChartLine, ChartPie, CircleDot, LayoutTemplate, MousePointerClick, Play, Search, Sparkles, Trash, X } from 'lucide-react';
+import { CHART_KINDS, sampleChart } from '../diagram/charts';
 import { actions, currentPage, useStore } from '../store';
 import { useDiagramUI } from '../diagram/ui';
 import { SECTORS, existingIcons, iconLabel, loadIconSets, onIconSetsReady, searchIcons, drawIcon, type IconHit } from '../diagram/icons';
 import { addFromLibrary, startOrdering } from '../diagram/interact';
 import { autoSteps, removeStep, stepCount, stepLabels, swapSteps } from '../diagram/steps';
 import { shapePath } from '../diagram/geometry';
-import type { DiagramNode, NodeShape } from '../types';
+import type { ChartKind, DiagramNode, NodeShape } from '../types';
+
+const CHART_ICONS: Record<ChartKind, React.ReactNode> = {
+  line: <ChartLine size={26} />,
+  area: <ChartArea size={26} />,
+  bar: <ChartColumn size={26} />,
+  pie: <ChartPie size={26} />,
+  donut: <CircleDot size={26} />,
+  candle: <ChartCandlestick size={26} />,
+};
 
 export const DRAG_TYPE = 'application/x-jungey-node';
 
@@ -130,6 +140,14 @@ function AddTab() {
             {SHAPES.map((s) => (
               <Tile key={s.shape} label={s.label} onAdd={() => addFromLibrary(s.shape, { text: s.shape === 'frame' ? 'Section' : '' })} drag={{ shape: s.shape }}>
                 <ShapeGlyph shape={s.shape} />
+              </Tile>
+            ))}
+          </div>
+          <div className="lib-label">Charts</div>
+          <div className="lib-grid">
+            {CHART_KINDS.map((c) => (
+              <Tile key={c.kind} label={c.label} onAdd={() => addFromLibrary('chart', { chart: sampleChart(c.kind) })} drag={{ shape: 'chart', chart: sampleChart(c.kind) }}>
+                <span className="glyph chart-glyph">{CHART_ICONS[c.kind]}</span>
               </Tile>
             ))}
           </div>

@@ -1,7 +1,7 @@
 // Everything you see on top of a diagram while editing: selection, "+" handles, the floating
 // toolbar, the text editor, step badges and the presenter pill. None of it is recorded.
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Ellipsis, Sparkles, Trash } from 'lucide-react';
+import { ChartColumn, ChevronLeft, ChevronRight, Ellipsis, Sparkles, Trash } from 'lucide-react';
 import { actions, useStore } from '../store';
 import { compositor } from '../engine/compositor';
 import { liveNodes, useDiagramUI } from '../diagram/ui';
@@ -17,6 +17,7 @@ import type { DiagramEdge, DiagramNode, EdgeRoute, EnterKind, FxKind } from '../
 const NODE_ENTER: EnterKind[] = ['pop', 'fade', 'grow', 'drop', 'slide', 'zoom'];
 const NODE_FX: FxKind[] = ['jump', 'shake', 'pulse', 'spin', 'wiggle', 'glow', 'collapse', 'regrow', 'fadeout', 'run', 'runback'];
 const EDGE_ENTER: EnterKind[] = ['draw', 'fade'];
+const CHART_ENTER: EnterKind[] = ['reveal', 'pop', 'fade', 'slide', 'zoom'];
 const EDGE_FX: FxKind[] = ['flow', 'glow', 'pulse', 'collapse', 'regrow', 'fadeout'];
 
 /** Page units → CSS pixels on the stage. */
@@ -57,7 +58,7 @@ function AnimateMenu({ nodes, edges, onDone }: { nodes: DiagramNode[]; edges: Di
     onDone();
   };
 
-  const enterList = isEdge ? EDGE_ENTER : NODE_ENTER;
+  const enterList = isEdge ? EDGE_ENTER : nodes.every((n) => n.shape === 'chart') ? CHART_ENTER : NODE_ENTER;
   const fxList = isEdge ? EDGE_FX : NODE_FX;
   return (
     <div className="anim-menu" onPointerDown={(e) => e.stopPropagation()}>
@@ -146,6 +147,11 @@ function Toolbar({ nodes, edges, left, top }: { nodes: DiagramNode[]; edges: Dia
         ))}
       </div>
       <span className="d-sep" />
+      {nodes.length === 1 && !edges.length && nodes[0].shape === 'chart' && (
+        <button className="btn chip" onClick={() => useDiagramUI.setState({ chartEditing: nodes[0].id })} title="Edit the numbers (or double-click the chart)">
+          <ChartColumn size={15} /> Edit data
+        </button>
+      )}
       <Popover
         placement="bottom-start"
         className="anim-pop"

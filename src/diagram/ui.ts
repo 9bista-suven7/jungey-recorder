@@ -21,6 +21,8 @@ export interface DiagramUI {
   marquee: Rect | null;
   /** Node or arrow whose text is being typed. */
   editing: string | null;
+  /** Chart whose data is open in the data editor. */
+  chartEditing: string | null;
   /** "Click things in the order you'll explain them" mode; holds the last step given out. */
   ordering: number | null;
   panel: 'add' | 'steps' | null;
@@ -35,6 +37,7 @@ export const useDiagramUI = create<DiagramUI>()(() => ({
   connect: null,
   marquee: null,
   editing: null,
+  chartEditing: null,
   ordering: null,
   panel: null,
   templatesOpen: false,

@@ -12,8 +12,9 @@ import { Stage } from './Stage';
 import { PagesBar } from './PagesBar';
 import { LibraryPanel } from './LibraryPanel';
 import { TemplatePicker } from './TemplatePicker';
+import { ChartEditor } from './ChartEditor';
 import { clearSelection, useDiagramUI } from '../diagram/ui';
-import { copySelection, deleteSelection, duplicateSelection, nudge, paste as pasteDiagram, selectAll } from '../diagram/interact';
+import { copySelection, deleteSelection, duplicateSelection, editNode, nudge, paste as pasteDiagram, selectAll } from '../diagram/interact';
 
 export function toggleRecord() {
   const rec = useStore.getState().rec;
@@ -27,7 +28,7 @@ function useShortcuts() {
     const down = (e: KeyboardEvent) => {
       if (isTypingTarget(e) || e.altKey) return;
       const s = useStore.getState();
-      if (s.reviewId || s.helpOpen || useDiagramUI.getState().templatesOpen) return;
+      if (s.reviewId || s.helpOpen || useDiagramUI.getState().templatesOpen || useDiagramUI.getState().chartEditing) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const ui = useDiagramUI.getState();
@@ -58,7 +59,7 @@ function useShortcuts() {
         const moves: Record<string, [number, number]> = { arrowleft: [-big, 0], arrowright: [big, 0], arrowup: [0, -big], arrowdown: [0, big] };
         if (moves[k]) return void (e.preventDefault(), nudge(...moves[k]));
         if (k === 'delete' || k === 'backspace') return void (e.preventDefault(), deleteSelection());
-        if (k === 'enter' && ui.selected.length === 1) return void (e.preventDefault(), useDiagramUI.setState({ editing: ui.selected[0] }));
+        if (k === 'enter' && ui.selected.length === 1) return void (e.preventDefault(), editNode(ui.selected[0]));
       }
       if (k === 'escape') {
         if (ui.ordering !== null) return void useDiagramUI.setState({ ordering: null });
@@ -151,6 +152,7 @@ export function Studio() {
       </div>
       <PagesBar />
       <TemplatePicker />
+      <ChartEditor />
     </div>
   );
 }

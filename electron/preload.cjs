@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('jungey', {
     saveCopy: (id) => ipcRenderer.invoke('videos:saveCopy', id),
     trim: (args) => ipcRenderer.invoke('videos:trim', args),
   },
+  worldBank: (args) => ipcRenderer.invoke('data:worldbank', args),
   onProgress: (cb) => listen('job:progress', cb),
   onPickSource: (cb) => listen('screen:pick', cb),
   pickSource: (id) => ipcRenderer.send('screen:picked', id),

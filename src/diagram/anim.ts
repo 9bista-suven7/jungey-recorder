@@ -30,13 +30,14 @@ export const idle = (): Look => ({
 
 export const ENTER_LABEL: Record<EnterKind, string> = {
   pop: 'Pop', fade: 'Fade in', grow: 'Grow', drop: 'Jump in', slide: 'Slide in', zoom: 'Zoom in', draw: 'Draw',
+  reveal: 'Draw chart',
 };
 export const FX_LABEL: Record<FxKind, string> = {
   jump: 'Jump', shake: 'Shake', pulse: 'Pulse', spin: 'Spin', wiggle: 'Wiggle', glow: 'Glow', collapse: 'Collapse',
   regrow: 'Regrow', fadeout: 'Fade out', run: 'Run along arrow', runback: 'Run back', flow: 'Send data',
 };
 
-export const ENTER_MS: Record<EnterKind, number> = { pop: 480, fade: 450, grow: 520, drop: 950, slide: 600, zoom: 520, draw: 750 };
+export const ENTER_MS: Record<EnterKind, number> = { pop: 480, fade: 450, grow: 520, drop: 950, slide: 600, zoom: 520, draw: 750, reveal: 2200 };
 export const FX_MS: Record<FxKind, number> = {
   jump: 950, shake: 650, pulse: 900, spin: 850, wiggle: 850, glow: 600, collapse: 520, regrow: 720, fadeout: 520,
   run: 1500, runback: 1300, flow: 0,
@@ -87,6 +88,10 @@ export function applyEnter(L: Look, kind: EnterKind, p: number) {
       break;
     case 'draw':
       L.draw = inOutCubic(q);
+      break;
+    case 'reveal':
+      // Charts draw their own data in over the whole duration (lines left to right, bars growing...).
+      L.draw = q;
       break;
   }
 }

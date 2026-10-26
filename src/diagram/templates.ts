@@ -4,6 +4,8 @@ import type { DiagramEdge, DiagramNode, NodeShape } from '../types';
 import { DEFAULT_SIZE } from './geometry';
 import { autoSteps } from './steps';
 import { C, slotColor } from './theme';
+import { sampleChart } from './charts';
+import type { ChartSpec } from '../types';
 
 export interface Template {
   id: string;
@@ -28,11 +30,39 @@ const frame = (x0: number, y0: number, x1: number, y1: number, text: string, slo
 });
 const title = (text: string, cx = 760, cy = 92) => node('text', cx, cy, text, { w: 900, h: 70, slot: C.grey });
 
+const chart = (x: number, y: number, w: number, h: number, spec: ChartSpec, step: number): DiagramNode => ({
+  id: id(), shape: 'chart', x, y, w, h, text: '', color: slotColor(C.blue), chart: spec, step, enter: 'reveal',
+});
+
 function edge(a: DiagramNode, b: DiagramNode, extra: Partial<DiagramEdge> = {}): DiagramEdge {
   return { id: id(), from: a.id, to: b.id, text: '', color: slotColor(C.grey), route: 'elbow', dashed: false, arrows: 'end', flow: false, ...extra };
 }
 
 export const TEMPLATES: Template[] = [
+  {
+    id: 'stock',
+    title: 'Stock price story',
+    blurb: 'A share price draws itself, then what moved it',
+    build() {
+      const line = chart(100, 170, 920, 540, { ...sampleChart('line'), title: 'ACME share price, 2025 (sample data)' }, 1);
+      const dip = node('note', 1250, 300, 'June–July: weak forecast, shares fall 27%', { w: 320, h: 180, step: 2 });
+      const up = node('note', 1250, 560, 'Autumn: new product launch, shares hit a record', { w: 320, h: 180, step: 3, slot: C.yellow });
+      return { nodes: [title('What moved ACME stock this year?'), line, dip, up], edges: [] };
+    },
+  },
+  {
+    id: 'inflation',
+    title: 'Inflation explained',
+    blurb: 'A bar chart of inflation, then why prices rise',
+    build() {
+      const bars = chart(80, 170, 760, 500, sampleChart('bar'), 1);
+      const money = icon('lu:Banknote', 1000, 300, 'More money chasing goods', { slot: C.green, step: 2 });
+      const prices = icon('lu:TrendingUp', 1320, 300, 'Prices rise', { slot: C.red, step: 3 });
+      const wallet = icon('lu:Wallet', 1320, 580, 'Each note buys less', { slot: C.orange, step: 4 });
+      const nodes = [title('Why do prices keep rising?'), bars, money, prices, wallet];
+      return { nodes, edges: [edge(money, prices, { packet: 'demand' }), edge(prices, wallet)] };
+    },
+  },
   {
     id: 'request',
     title: 'Request flow',

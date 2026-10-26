@@ -22,7 +22,7 @@ export const center = (n: DiagramNode): Pt => ({ x: n.x + n.w / 2, y: n.y + n.h 
 export const DEFAULT_SIZE: Record<NodeShape, [number, number]> = {
   rect: [210, 92], rounded: [210, 92], pill: [210, 80], ellipse: [180, 110], diamond: [190, 130], cylinder: [150, 130],
   hexagon: [200, 100], parallelogram: [210, 92], document: [190, 115], cloud: [230, 145], note: [210, 170],
-  frame: [600, 380], text: [260, 60], icon: [118, 118], dot: [34, 34],
+  frame: [600, 380], text: [260, 60], icon: [118, 118], dot: [34, 34], chart: [780, 460],
 };
 
 /** Shapes that are context (sections, notes, captions) rather than steps of a flow. */

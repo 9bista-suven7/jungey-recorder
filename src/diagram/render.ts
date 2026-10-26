@@ -6,6 +6,7 @@ import { lookAt, previewLook, type Look, type Timing } from './anim';
 import { diagramTheme, themed, type DiagramTheme } from './theme';
 import { drawIcon } from './icons';
 import { blurSprite, glowDot } from '../engine/sprites';
+import { drawChart } from './charts';
 
 /** Soft shadow or glow of a node's outline, from the sprite cache (no per-frame blur). */
 function halo(ctx: CanvasRenderingContext2D, n: DiagramNode, blur: number, color: string, dy = 0, outline?: (c: CanvasRenderingContext2D) => void) {
@@ -135,6 +136,17 @@ function drawNode(ctx: CanvasRenderingContext2D, n: DiagramNode, th: DiagramThem
         ctx.textBaseline = 'top';
         wrapLines(ctx, n.text, w + 90).forEach((l, i) => ctx.fillText(l, cx, y + h + 14 + i * 30));
       }
+      break;
+    }
+    case 'chart': {
+      const card = (c: CanvasRenderingContext2D) => c.roundRect(0, 0, w, h, 20);
+      if (glow) {
+        ctx.save();
+        ctx.globalAlpha *= glow * pulse;
+        halo(ctx, n, 34, color, 0, card);
+        ctx.restore();
+      } else halo(ctx, n, 22, th.dark ? 'rgba(0,0,0,0.35)' : 'rgba(20,30,50,0.12)', 6, card);
+      drawChart(ctx, n, th, L.draw);
       break;
     }
     case 'dot': {
@@ -329,7 +341,7 @@ export function drawDiagram(ctx: CanvasRenderingContext2D, t: Xform, f: DiagramF
   const looks = new Map<string, Look | null>();
   const preview = (id: string) => (!f.presenting && f.preview?.ids.includes(id) ? previewLook(f.preview.kind, f.now - f.preview.start) : null);
   for (const n of f.nodes) {
-    const L = preview(n.id) ?? lookAt(n.step ?? 0, n.enter ?? 'pop', n.fx, order.get(n.id) ?? 0, f);
+    const L = preview(n.id) ?? lookAt(n.step ?? 0, n.enter ?? (n.shape === 'chart' ? 'reveal' : 'pop'), n.fx, order.get(n.id) ?? 0, f);
     looks.set(n.id, L);
   }
 

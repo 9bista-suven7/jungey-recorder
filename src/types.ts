@@ -57,7 +57,7 @@ export interface View {
 }
 
 /** How something appears at its step. */
-export type EnterKind = 'pop' | 'fade' | 'grow' | 'drop' | 'slide' | 'zoom' | 'draw';
+export type EnterKind = 'pop' | 'fade' | 'grow' | 'drop' | 'slide' | 'zoom' | 'draw' | 'reveal';
 /** Something that happens to an element at a later step. */
 export type FxKind =
   | 'jump' | 'shake' | 'pulse' | 'spin' | 'wiggle' | 'glow'
@@ -82,7 +82,30 @@ export type NodeShape =
   | 'frame'
   | 'text'
   | 'icon'
-  | 'dot';
+  | 'dot'
+  | 'chart';
+
+export type ChartKind = 'line' | 'area' | 'bar' | 'pie' | 'donut' | 'candle';
+
+export interface ChartSeries {
+  name: string;
+  values: number[];
+}
+
+/** A chart's data lives inside the chart (no database): labels along the bottom, one or more series. */
+export interface ChartSpec {
+  kind: ChartKind;
+  title: string;
+  labels: string[];
+  /** Line, area and bar charts can have several; pie and donut use the first. */
+  series: ChartSeries[];
+  /** Candlestick charts: open, high, low, close per label. */
+  candles?: { o: number; h: number; l: number; c: number }[];
+  /** Shown with the numbers: '$', '₹', '%', ' bn', ... */
+  unit?: string;
+  /** Where the numbers came from, shown small under the chart. */
+  source?: string;
+}
 
 /** A box, icon or section on a flow diagram. x/y is the top-left corner, in page units. */
 export interface DiagramNode {
@@ -96,6 +119,8 @@ export interface DiagramNode {
   color: string;
   /** 'dev:maven', 'si:stripe' or 'lu:server' (only used by icon nodes). */
   icon?: string;
+  /** Only used by chart nodes. */
+  chart?: ChartSpec;
   /** Revealed at this step while presenting; always visible when unset. */
   step?: number;
   enter?: EnterKind;

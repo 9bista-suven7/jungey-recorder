@@ -2,7 +2,7 @@
 // Electron main process: window, on-disk video library, screen picker, ffmpeg finishing.
 const {
   app, BrowserWindow, ipcMain, protocol, session, desktopCapturer,
-  shell, globalShortcut, dialog, systemPreferences, screen,
+  shell, globalShortcut, dialog, systemPreferences, screen, net,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -183,6 +183,29 @@ ipcMain.handle('projects:put', async (_e, project) => {
 ipcMain.handle('projects:delete', async (_e, id) => {
   await fsp.rm(projectFile(id), { force: true });
   return true;
+});
+
+// ---------------------------------------------------------------- real data for charts
+
+/**
+ * Yearly figures from the World Bank's open API (no key). The only request the app makes to
+ * the internet, and only when you press "Get data". The URL is built here from checked codes.
+ */
+ipcMain.handle('data:worldbank', async (_e, { country, indicator, years }) => {
+  if (!/^[A-Za-z]{2,3}$/.test(country) || !/^[A-Z][A-Z0-9.]{2,40}$/.test(indicator)) throw new Error('Unknown country or indicator');
+  const n = Math.max(2, Math.min(60, Number(years) || 15));
+  const url = `https://api.worldbank.org/v2/country/${country}/indicator/${indicator}?format=json&per_page=${n}&mrv=${n}`;
+  const res = await net.fetch(url);
+  if (!res.ok) throw new Error(`The World Bank answered ${res.status}`);
+  const json = await res.json();
+  const rows = Array.isArray(json) && Array.isArray(json[1]) ? json[1] : [];
+  return {
+    country: rows[0]?.country?.value ?? country,
+    points: rows
+      .filter((r) => typeof r.value === 'number')
+      .map((r) => ({ year: String(r.date), value: r.value }))
+      .sort((a, b) => a.year.localeCompare(b.year)),
+  };
 });
 
 // ---------------------------------------------------------------- library

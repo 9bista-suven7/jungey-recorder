@@ -24,7 +24,11 @@ Pick what you want to make on the start screen and you're ready to record. Board
   laser pointer, pan and zoom, pages, undo / redo. Colours adapt when you switch boards.
 - **Flow diagrams:** boxes, decisions, databases, sections, sticky notes and ~6,000 icons (Maven, MongoDB, Kafka,
   Docker, AWS, bank, tree, person…) grouped by sector (Tech, Finance, Business, Science, Nature & people) with search.
-  Templates: request flow, CI/CD pipeline, Git branching, microservices, org chart.
+  Templates: stock price story, inflation explained, request flow, CI/CD pipeline, Git branching, microservices, org chart.
+- **Charts:** line, area, bar, pie, donut and candlestick charts that draw themselves in while you talk (lines run left
+  to right, bars grow, values count up). Paste a table from Excel or Google Sheets, open a CSV, or get real figures
+  from the [World Bank](https://data.worldbank.org) (inflation, GDP growth, unemployment, interest rates, population)
+  for 30 countries and compare them. For stock prices, use `=GOOGLEFINANCE(...)` in Google Sheets and paste the result.
 - **Steps and animations:** press <kbd>→</kbd> while recording to reveal the next step. Arrows draw themselves and data
   flows along them. Animate anything: pop, grow, jump in, slide, jump, shake, pulse, spin, collapse, regrow, run along an
   arrow… Diagrams without steps reveal in arrow order automatically.
@@ -33,7 +37,8 @@ Pick what you want to make on the start screen and you're ready to record. Board
   so a crash doesn't lose the take (it is recovered on next start).
 - **After recording:** watch it, trim the start and end, rename, show in folder, save a copy.
 
-Everything stays on your computer. Nothing is uploaded.
+Everything stays on your computer. Nothing is uploaded. The only time the app goes online is when you press
+**Get data** in a chart, which downloads public figures from the World Bank.
 
 ## Download
 
@@ -177,7 +182,7 @@ Press <kbd>?</kbd> in the app for the full list.
 electron/main.cjs     window, app:// protocol, video library and board files on disk, screen picker, ffmpeg
 electron/preload.cjs  the bridge the page uses (window.jungey)
 src/engine/           compositor (draws each frame), input, media, recorder, session, PDF import, trim
-src/diagram/          flow diagrams: shapes, arrows, icons, steps, animations, templates
+src/diagram/          flow diagrams: shapes, arrows, icons, charts, steps, animations, templates
 src/components/       Home, Studio (TopBar, ToolDock, Stage, LibraryPanel, PagesBar, Teleprompter), Review, overlays
 scripts/              dev runner, icon copier, Linux installer
 ```
@@ -189,4 +194,5 @@ Built with Electron, React, Vite and TypeScript.
 - Icons: [Devicon](https://devicon.dev) (MIT), [Simple Icons](https://simpleicons.org) (CC0), [Lucide](https://lucide.dev) (ISC).
   Brand logos are trademarks of their owners.
 - Strokes: [perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT). PDF pages: [pdf.js](https://mozilla.github.io/pdf.js/) (Apache-2.0).
+- Economic data: [World Bank Open Data](https://data.worldbank.org) (CC BY 4.0), fetched only when you ask for it.
 - Fonts: [Inter](https://rsms.me/inter/) and [Caveat](https://fonts.google.com/specimen/Caveat) (SIL Open Font License).
