@@ -5,7 +5,7 @@ import { PRESETS, type Preset } from '../presets';
 import { PresetArt } from './PresetArt';
 import { Logo } from './icons';
 import { PageThumb, VideoCard } from './ui';
-import { media } from '../engine/media';
+import { shareScreen } from '../desk/present';
 import { importFiles } from '../engine/importer';
 import { projectsDb } from '../engine/db';
 import { bridge, isDesktop } from '../platform';
@@ -14,7 +14,7 @@ import { useDiagramUI } from '../diagram/ui';
 
 function start(preset: Preset) {
   // Anything that needs the click (screen picker, file picker) starts before the studio opens.
-  if (preset.action === 'screen') void media.startScreen();
+  if (preset.action === 'screen') void shareScreen();
   if (preset.action === 'import') {
     void pickFiles('application/pdf,image/*').then(importFiles);
   }

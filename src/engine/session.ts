@@ -4,7 +4,8 @@ import { compositor } from './compositor';
 import { media } from './media';
 import { StreamRecorder } from './recorder';
 import { bridge } from '../platform';
-import { closePresenter, openPresenter } from '../desk/present';
+import { closePresenter, openPresenter, shareScreen } from '../desk/present';
+import { useDesk } from '../desk/state';
 import { useDiagramUI } from '../diagram/ui';
 
 let recorder: StreamRecorder | null = null;
@@ -26,7 +27,7 @@ export async function startRecording() {
   void media.resumeAudio();
   if (s.project.settings.layout === 'screen-cam') {
     // Pick what to share, then straight into the countdown.
-    if (s.screen !== 'on' && !(await media.startScreen())) return;
+    if (s.screen !== 'on' && !(await shareScreen())) return;
     if (useStore.getState().rec !== 'idle') return;
     await openPresenter();
   }
@@ -70,7 +71,8 @@ async function begin() {
 export function cancelCountdown() {
   clearTimeout(countdownTimer);
   set({ rec: 'idle' });
-  closePresenter();
+  // While presenting your screen, stay there; otherwise put the controls away.
+  if (!useDesk.getState().on) closePresenter();
 }
 
 export function togglePause() {

@@ -8,6 +8,7 @@ import { ASPECTS, BOARD_STYLES, LAYOUTS, PATTERNS, getBoardStyle } from '../lib/
 import { LayoutIcon, Logo } from './icons';
 import { Popover } from './ui';
 import { media } from '../engine/media';
+import { shareScreen } from '../desk/present';
 import { cancelCountdown, getElapsed, startRecording, stopRecording, togglePause } from '../engine/session';
 import { bridge, isDesktop } from '../platform';
 import { formatTime } from '../lib/util';
@@ -224,7 +225,7 @@ function ScreenButton() {
   const screen = useStore((s) => s.screen);
   if (layout !== 'screen-cam') return null;
   return (
-    <button className="btn chip" onClick={() => void media.startScreen()} data-tip="Choose what to share">
+    <button className="btn chip" onClick={() => void shareScreen()} data-tip="Choose what to share">
       <MonitorUp size={16} />
       <span className="chip-label">{screen === 'on' ? 'Change screen' : 'Share screen'}</span>
     </button>

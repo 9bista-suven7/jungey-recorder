@@ -42,6 +42,8 @@ interface DeskState {
   clearing: number;
   /** The face bubble is a real window on the screen (so the recording already has it). */
   camOnScreen: boolean;
+  /** The shared screen's area, in screen coordinates. */
+  bounds: { x: number; y: number; width: number; height: number } | null;
 }
 
 export const useDesk = create<DeskState>()(() => ({
@@ -54,6 +56,7 @@ export const useDesk = create<DeskState>()(() => ({
   nextBadge: 1,
   clearing: 0,
   camOnScreen: false,
+  bounds: null,
 }));
 
 export const deskActions = {

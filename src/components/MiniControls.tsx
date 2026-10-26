@@ -2,11 +2,12 @@
 // you're presenting in "Screen + me". While you present your whole screen it also has the
 // drawing tools for the ink layer on top of it.
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { Pause, Play, Square } from 'lucide-react';
+import { AppWindow, Pause, Play, Square } from 'lucide-react';
 import { useStore } from '../store';
-import { cancelCountdown, stopRecording, togglePause } from '../engine/session';
+import { cancelCountdown, startRecording, stopRecording, togglePause } from '../engine/session';
 import { bridge } from '../platform';
 import { closeChild, openChild } from '../lib/childWindow';
+import { closePresenter } from '../desk/present';
 import { useDesk } from '../desk/state';
 import { DeskTools, StampRow, deskKey } from '../desk/DeskTools';
 import { Timer } from './TopBar';
@@ -43,7 +44,12 @@ function MiniControls() {
       {stamps && <StampRow />}
       <div className="mini">
         <span className="mini-drag" />
-        {rec === 'countdown' ? (
+        {rec === 'idle' ? (
+          // Presenting, not recording yet: use your computer, draw, and record when ready.
+          <button className="mini-btn stop" onClick={() => void startRecording()} title="Start recording (Alt+Shift+R)">
+            <span className="rec-dot" /> Record
+          </button>
+        ) : rec === 'countdown' ? (
           <>
             <span className="mini-status">Starting in {n}…</span>
             <button className="mini-btn" onClick={cancelCountdown}>
@@ -66,6 +72,14 @@ function MiniControls() {
           </>
         )}
         {desk && <DeskTools />}
+        {desk && rec === 'idle' && (
+          <>
+            <span className="mini-sep" />
+            <button className="mini-tool" onClick={closePresenter} title="Back to Jungey Recorder" aria-label="Back to Jungey Recorder">
+              <AppWindow size={18} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

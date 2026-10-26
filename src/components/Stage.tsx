@@ -6,6 +6,7 @@ import { compositor, startLoop } from '../engine/compositor';
 import { attachStageInput } from '../engine/input';
 import { bubblePlacement } from '../engine/layout';
 import { media } from '../engine/media';
+import { shareScreen } from '../desk/present';
 import { importFiles } from '../engine/importer';
 import { TEXT_FONT, TEXT_LINE } from '../engine/items';
 import { clamp } from '../lib/util';
@@ -144,9 +145,9 @@ function Placeholders() {
     return (
       <div className="stage-empty">
         <MonitorUp size={34} />
-        <h3>Share a window or your screen</h3>
-        <p>Then draw on top of it here. Your camera bubble stays in the corner.</p>
-        <button className="btn primary" disabled={screen === 'pending'} onClick={() => void media.startScreen()}>
+        <h3>Share your screen</h3>
+        <p>This window steps aside so you can use your computer as usual, with tools to draw on top of anything and to record.</p>
+        <button className="btn primary" disabled={screen === 'pending'} onClick={() => void shareScreen()}>
           {screen === 'pending' ? <LoaderCircle size={16} className="spin" /> : <MonitorUp size={16} />} Choose what to share
         </button>
       </div>
