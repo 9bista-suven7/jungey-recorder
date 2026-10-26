@@ -11,7 +11,7 @@ Pick what you want to make on the start screen and you're ready to record. Board
 | Blackboard lesson | Chalk board with texture, face bubble in the corner |
 | Explain a flow | Diagrams, pipelines and architecture with real tech logos, revealed step by step |
 | Whiteboard explainer | Clean markers on white |
-| Screen + me | Share a window or screen, draw over it, face bubble |
+| Screen + me | Share your screen and draw, point and add emojis right on top of any app, face bubble |
 | Teach from slides | Opens a PDF or images as pages you can mark up |
 | Talking head | Full camera with a scrolling teleprompter |
 | Shorts & Reels | Vertical 9:16, you on top and the board below |
@@ -32,6 +32,11 @@ Pick what you want to make on the start screen and you're ready to record. Board
 - **Steps and animations:** press <kbd>→</kbd> while recording to reveal the next step. Arrows draw themselves and data
   flows along them. Animate anything: pop, grow, jump in, slide, jump, shake, pulse, spin, collapse, regrow, run along an
   arrow… Diagrams without steps reveal in arrow order automatically.
+- **Draw on your screen:** record your whole screen and draw right on top of any app: pen, highlighter, arrows,
+  boxes, circles, emojis, numbered steps (1, 2, 3…) and a laser pointer. Click the pointer button (or press <kbd>Esc</kbd>) to use your
+  apps again; your marks stay until you clear them. Your face bubble sits on the screen too, so you can drag it out of the way,
+  and the video shows exactly what you see. (Windows leaves the floating controls out of the video; Linux can't,
+  so drag them to a corner.)
 - **Recording:** 3-2-1 countdown, pause / resume, a floating mini control bar while you present another app,
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>P</kbd> work from any app. Chunks are written to disk as you record,
   so a crash doesn't lose the take (it is recovered on next start).
@@ -169,6 +174,7 @@ about 10 minutes. You can also run it by hand from the repo's **Actions** tab fo
 | <kbd>→</kbd> <kbd>←</kbd> | Next / previous step (or page) |
 | <kbd>V</kbd> <kbd>P</kbd> <kbd>H</kbd> <kbd>E</kbd> <kbd>S</kbd> <kbd>T</kbd> <kbd>L</kbd> | Select, pen, highlighter, eraser, shapes, text, laser |
 | <kbd>A</kbd> | Open the library (boxes, icons, templates) |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Sharing your whole screen: start drawing on it / back to your apps (<kbd>Esc</kbd> also goes back) |
 | Hold <kbd>Space</kbd> | Move the board |
 | <kbd>1</kbd>–<kbd>6</kbd>, <kbd>[</kbd> <kbd>]</kbd> | Colours, thinner / thicker |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Undo / redo |

@@ -44,10 +44,21 @@ export interface Bridge {
   };
   /** Yearly figures for a country from the World Bank (inflation, GDP growth, ...). */
   worldBank(args: { country: string; indicator: string; years: number }): Promise<{ country: string; points: { year: string; value: number }[] }>;
+  /** Desktop only: drawing on top of a shared whole screen. */
+  desk?: {
+    /** Starts presenting what was just shared; for a whole screen, returns the area it covers. */
+    begin(): Promise<{ kind: 'screen' | 'window' | null; bounds: { x: number; y: number; width: number; height: number } | null }>;
+    end(): Promise<void>;
+    /** true: the ink layer takes the mouse; false: clicks go through to your apps. */
+    draw(on: boolean): void;
+    toolbar(size: { width: number; height: number }): void;
+    /** Moves the face bubble window to this screen position. */
+    moveCam(pos: { x: number; y: number }): void;
+  };
   onProgress(cb: (p: { id: string; progress: number }) => void): () => void;
   onPickSource(cb: (list: ScreenSource[]) => void): () => void;
   pickSource(id: string | null): void;
-  onShortcut(cb: (name: 'record' | 'pause') => void): () => void;
+  onShortcut(cb: (name: 'record' | 'pause' | 'draw' | 'mouse' | 'undo') => void): () => void;
 }
 
 declare global {

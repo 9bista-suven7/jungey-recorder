@@ -46,7 +46,7 @@ export function ScreenPicker() {
     () =>
       bridge.onPickSource((list) => {
         setSources(list);
-        setTab(list.some((s) => s.kind === 'window') ? 'window' : 'screen');
+        setTab(list.some((s) => s.kind === 'screen') ? 'screen' : 'window');
       }),
     [],
   );
@@ -82,7 +82,11 @@ export function ScreenPicker() {
           ))}
           {!shown.length && <p className="drawer-empty">Nothing to show here.</p>}
         </div>
-        <p className="picker-tip">Tip: share a window (a browser, slides, code editor), then draw over it in Jungey Recorder.</p>
+        <p className="picker-tip">
+          {tab === 'screen'
+            ? 'Share your whole screen to draw, point and add emojis right on top of it while you record.'
+            : 'A window shows inside Jungey Recorder, where you can draw over it. To draw on top of any app, share your whole screen.'}
+        </p>
       </div>
     </div>
   );
@@ -92,6 +96,7 @@ const SHORTCUTS: [string, string[]][] = [
   ['Start / stop recording', ['R']],
   ['Pause / resume', ['K']],
   ['Record or pause from any app', ['Alt', 'Shift', 'R / P']],
+  ['Sharing your whole screen: draw on it / back to your apps', ['Alt', 'Shift', 'D']],
   ['Pen · Highlighter · Eraser', ['P', 'H', 'E']],
   ['Shapes (press again to switch)', ['S']],
   ['Text · Laser pointer', ['T', 'L']],

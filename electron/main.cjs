@@ -368,12 +368,122 @@ async function handleDisplayMedia(_request, callback) {
       chosen = sources.find((s) => s.id === id) || null;
     }
     if (!chosen) return callback({});
+    lastSource = { id: chosen.id, displayId: chosen.display_id };
     callback(process.platform === 'win32' ? { video: chosen, audio: 'loopback' } : { video: chosen });
   } catch (e) {
     console.error('[screen]', e);
     callback({});
   }
 }
+
+// ---------------------------------------------------------------- drawing on the shared screen
+// While you record your whole screen, a see-through window covers it. You draw, point and stamp
+// emojis on top of any app, and the screen recording picks it up exactly as you see it.
+// The page opens these windows itself (window.open), so they share its state.
+
+let lastSource = null;
+/** Set while presenting a whole screen: the area the ink layer covers. */
+let desk = null;
+/** Child windows by name: jungey-ink (ink layer), jungey-cam (face bubble), jungey-mini (controls). */
+const kids = new Map();
+const DESK_KEYS = ['Alt+Shift+D'];
+const DRAW_KEYS = ['Escape', 'CommandOrControl+Z'];
+
+function sourceBounds(src) {
+  const all = screen.getAllDisplays();
+  const match = all.find((d) => String(d.id) === String(src.displayId));
+  if (match) return match.bounds;
+  if (all.length === 1) return all[0].bounds;
+  // One capture of every monitor together (X11): cover them all.
+  const x0 = Math.min(...all.map((d) => d.bounds.x)), y0 = Math.min(...all.map((d) => d.bounds.y));
+  const x1 = Math.max(...all.map((d) => d.bounds.x + d.bounds.width)), y1 = Math.max(...all.map((d) => d.bounds.y + d.bounds.height));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+const kid = (name) => {
+  const w = kids.get(name);
+  return w && !w.isDestroyed() ? w : null;
+};
+
+/** Controls and face bubble always sit above the ink layer, so they stay clickable. */
+function restack() {
+  kid('jungey-cam')?.moveTop();
+  kid('jungey-mini')?.moveTop();
+}
+
+function shortcuts(keys, on, send) {
+  for (const k of keys) {
+    if (!on) globalShortcut.unregister(k);
+    else if (!globalShortcut.isRegistered(k)) globalShortcut.register(k, () => win?.webContents.send('shortcut', send(k)));
+  }
+}
+
+/** Number features from window.open ("left=10,top=20,width=300,height=200"). */
+function features(str) {
+  const out = {};
+  for (const part of String(str || '').split(',')) {
+    const [k, v] = part.split('=').map((x) => x.trim());
+    if (k && /^-?\d+(\.\d+)?$/.test(v || '')) out[k] = Math.round(Number(v));
+  }
+  return out;
+}
+
+ipcMain.handle('desk:begin', () => {
+  const kind = lastSource ? (lastSource.id.startsWith('screen') ? 'screen' : 'window') : null;
+  if (kind !== 'screen') return { kind, bounds: null };
+  desk = { bounds: sourceBounds(lastSource) };
+  shortcuts(DESK_KEYS, true, () => 'draw');
+  // Out of the way, so the recording starts on your screen, not on this window.
+  win?.minimize();
+  return { kind, bounds: desk.bounds };
+});
+
+ipcMain.handle('desk:end', () => {
+  shortcuts(DESK_KEYS, false);
+  shortcuts(DRAW_KEYS, false);
+  if (!desk) return;
+  desk = null;
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+});
+
+ipcMain.on('desk:draw', (_e, on) => {
+  const ink = kid('jungey-ink');
+  if (!ink) return;
+  ink.setIgnoreMouseEvents(!on);
+  // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
+  shortcuts(DRAW_KEYS, !!on, (k) => (k === 'Escape' ? 'mouse' : 'undo'));
+  restack();
+});
+
+ipcMain.on('desk:moveCam', (_e, pos) => {
+  const cam = kid('jungey-cam');
+  if (!cam || !desk) return;
+  const { width, height } = cam.getBounds();
+  const b = desk.bounds;
+  // Keep at least half of it on the shared screen.
+  const x = Math.min(Math.max(Math.round(pos?.x || 0), b.x - width / 2), b.x + b.width - width / 2);
+  const y = Math.min(Math.max(Math.round(pos?.y || 0), b.y - height / 2), b.y + b.height - height / 2);
+  cam.setPosition(Math.round(x), Math.round(y));
+});
+
+ipcMain.on('desk:toolbar', (_e, size) => {
+  const m = kid('jungey-mini');
+  if (!m) return;
+  const b = m.getBounds();
+  const w = Math.max(200, Math.round(size?.width || 0));
+  const h = Math.max(40, Math.round(size?.height || 0));
+  if (w === b.width && h === b.height) return;
+  // Grow away from the nearest screen edge.
+  const area = screen.getDisplayMatching(b).workArea;
+  const low = b.y + b.height / 2 > area.y + area.height / 2;
+  m.setResizable(true);
+  m.setBounds({ x: Math.round(b.x + (b.width - w) / 2), y: low ? b.y + b.height - h : b.y, width: w, height: h });
+  m.setResizable(false);
+});
 
 // ---------------------------------------------------------------- window
 
@@ -402,28 +512,61 @@ function createWindow() {
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.on('closed', () => { win = null; });
 
-  // Floating mini recording controls (opened by the page with window.open).
-  win.webContents.setWindowOpenHandler(({ frameName, url }) => {
+  // Floating windows the page opens with window.open: recording controls, and while presenting
+  // a whole screen, the ink layer over it and the face bubble.
+  const floating = {
+    frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true,
+    minimizable: false, maximizable: false, fullscreenable: false,
+    webPreferences: { backgroundThrottling: false },
+  };
+  const clear = { transparent: true, backgroundColor: '#00000000', hasShadow: false };
+  win.webContents.setWindowOpenHandler(({ frameName, url, features: feat }) => {
+    const f = features(feat);
     if (frameName === 'jungey-mini') {
-      const { workArea } = screen.getPrimaryDisplay();
+      const width = f.width || 392, height = f.height || 64;
+      // Over a shared screen: bottom middle, clear of what you're showing. Otherwise: top middle.
+      const area = (desk ? screen.getDisplayMatching(desk.bounds) : screen.getPrimaryDisplay()).workArea;
+      const x = Math.round(area.x + area.width / 2 - width / 2);
+      const y = desk ? area.y + area.height - height - 20 : area.y + 16;
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: { ...floating, width, height, x, y, backgroundColor: '#15171d', title: 'Jungey controls' },
+      };
+    }
+    if (frameName === 'jungey-ink' && desk) {
+      const { x, y, width, height } = desk.bounds;
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          width: 392, height: 64,
-          x: Math.round(workArea.x + workArea.width / 2 - 196), y: workArea.y + 16,
-          frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true,
-          minimizable: false, maximizable: false, fullscreenable: false,
-          backgroundColor: '#15171d', title: 'Jungey controls',
-          webPreferences: { backgroundThrottling: false },
+          ...floating, ...clear, x, y, width, height, movable: false, enableLargerThanScreen: true, title: 'Jungey ink',
         },
+      };
+    }
+    if (frameName === 'jungey-cam' && desk && f.width && f.height) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: { ...floating, ...clear, x: f.left, y: f.top, width: f.width, height: f.height, title: 'Jungey camera' },
       };
     }
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-create-window', (child) => {
+  win.webContents.on('did-create-window', (child, { frameName }) => {
+    kids.set(frameName, child);
+    child.on('closed', () => kids.get(frameName) === child && kids.delete(frameName));
     child.setAlwaysOnTop(true, 'screen-saver');
     child.setVisibleOnAllWorkspaces(true);
+    if (frameName === 'jungey-ink') {
+      // Clicks go through to your apps until you pick a drawing tool.
+      child.setIgnoreMouseEvents(true);
+      if (desk) child.setBounds(desk.bounds);
+    }
+    // Windows and macOS leave the controls out of the recording.
+    if (frameName === 'jungey-mini') child.setContentProtection(true);
+    // Owned by the ink layer, so window managers always keep them above it, even after you click it.
+    const ink = kid('jungey-ink');
+    if (ink && frameName !== 'jungey-ink') child.setParentWindow(ink);
+    restack();
   });
 
   // Closing while recording: the page blocks unload, we ask.

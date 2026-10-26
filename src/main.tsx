@@ -7,11 +7,12 @@ import './styles.css';
 import App from './App';
 import { compositor } from './engine/compositor';
 import { useStore } from './store';
+import { useDesk } from './desk/state';
 
 // Text on the board uses Caveat; redraw once it has loaded.
 void document.fonts.load('600 48px Caveat').then(() => compositor.fontsVersion++);
 
 // Handy for poking at the app from the devtools console while developing.
-if (import.meta.env.DEV) Object.assign(window, { __jungey: { useStore, compositor } });
+if (import.meta.env.DEV) Object.assign(window, { __jungey: { useStore, compositor, useDesk } });
 
 createRoot(document.getElementById('root')!).render(<App />);

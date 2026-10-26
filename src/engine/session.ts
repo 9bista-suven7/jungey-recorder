@@ -4,7 +4,7 @@ import { compositor } from './compositor';
 import { media } from './media';
 import { StreamRecorder } from './recorder';
 import { bridge } from '../platform';
-import { closeMiniControls, openMiniControls } from '../components/MiniControls';
+import { closePresenter, openPresenter } from '../desk/present';
 import { useDiagramUI } from '../diagram/ui';
 
 let recorder: StreamRecorder | null = null;
@@ -25,12 +25,10 @@ export async function startRecording() {
   actions.commitText();
   void media.resumeAudio();
   if (s.project.settings.layout === 'screen-cam') {
-    if (s.screen !== 'on') {
-      const ok = await media.startScreen();
-      if (ok) actions.toast('Screen ready. Press Record again to start.');
-      return;
-    }
-    openMiniControls();
+    // Pick what to share, then straight into the countdown.
+    if (s.screen !== 'on' && !(await media.startScreen())) return;
+    if (useStore.getState().rec !== 'idle') return;
+    await openPresenter();
   }
   if (!s.countdown) return begin();
   let n = 3;
@@ -58,7 +56,7 @@ async function begin() {
     recorder = null;
     frameStream.getTracks().forEach((t) => t.stop());
     set({ rec: 'idle' });
-    closeMiniControls();
+    closePresenter();
     actions.toast('Could not start recording.', 'error');
     return;
   }
@@ -72,7 +70,7 @@ async function begin() {
 export function cancelCountdown() {
   clearTimeout(countdownTimer);
   set({ rec: 'idle' });
-  closeMiniControls();
+  closePresenter();
 }
 
 export function togglePause() {
@@ -101,11 +99,12 @@ export async function stopRecording() {
   const rec = recorder;
   recorder = null;
   set({ rec: 'saving', saveProgress: 0, promptPlaying: false });
-  closeMiniControls();
   const thumb = thumbnail(compositor.canvas);
   const off = bridge.onProgress((p) => p.id === rec.id && set({ saveProgress: p.progress }));
   try {
     const durationMs = await rec.stop();
+    // Only now: the last frames should still show your screen and drawings, not this window coming back.
+    closePresenter();
     frameStream?.getTracks().forEach((t) => t.stop());
     const takes = useStore.getState().videos.filter((v) => v.projectId === s.project?.id).length;
     const video = await bridge.rec.finish(rec.id, {
@@ -124,6 +123,7 @@ export async function stopRecording() {
     set({ rec: 'idle' });
     actions.toast('Saving the recording failed. It will be recovered next time you open the app.', 'error');
   } finally {
+    closePresenter();
     off();
     frameStream = null;
   }

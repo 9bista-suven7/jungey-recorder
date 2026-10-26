@@ -7,6 +7,7 @@ import { LibraryDrawer, ScreenPicker, ShortcutsDialog, Toast } from './component
 import { projectsDb } from './engine/db';
 import { togglePause } from './engine/session';
 import { bridge } from './platform';
+import { deskActions, useDesk } from './desk/state';
 import type { Project } from './types';
 
 /** Boards save themselves a moment after every change. */
@@ -47,7 +48,11 @@ export default function App() {
     return bridge.onShortcut((name) => {
       if (useStore.getState().screenView !== 'studio') return;
       if (name === 'record') toggleRecord();
-      else togglePause();
+      else if (name === 'pause') togglePause();
+      else if (!useDesk.getState().on) return;
+      else if (name === 'draw') deskActions.toggleDraw();
+      else if (name === 'mouse') deskActions.setTool('mouse');
+      else if (name === 'undo') deskActions.undo();
     });
   }, []);
 

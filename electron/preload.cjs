@@ -31,6 +31,13 @@ contextBridge.exposeInMainWorld('jungey', {
     trim: (args) => ipcRenderer.invoke('videos:trim', args),
   },
   worldBank: (args) => ipcRenderer.invoke('data:worldbank', args),
+  desk: {
+    begin: () => ipcRenderer.invoke('desk:begin'),
+    end: () => ipcRenderer.invoke('desk:end'),
+    draw: (on) => ipcRenderer.send('desk:draw', !!on),
+    toolbar: (size) => ipcRenderer.send('desk:toolbar', size),
+    moveCam: (pos) => ipcRenderer.send('desk:moveCam', pos),
+  },
   onProgress: (cb) => listen('job:progress', cb),
   onPickSource: (cb) => listen('screen:pick', cb),
   pickSource: (id) => ipcRenderer.send('screen:picked', id),

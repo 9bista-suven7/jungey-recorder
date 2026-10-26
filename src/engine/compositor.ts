@@ -11,6 +11,7 @@ import { drawDiagram, drawDiagramStatic } from '../diagram/render';
 import { liveNodes, useDiagramUI } from '../diagram/ui';
 import { boundsOf } from '../diagram/geometry';
 import { presented } from '../diagram/steps';
+import { useDesk } from '../desk/state';
 import type { DiagramNode, EnterKind, FxKind, Item, Page, Pattern, View } from '../types';
 
 const ease = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
@@ -416,8 +417,9 @@ class Compositor {
     // 4. Laser pointer
     this.drawLaser(ctx, now);
 
-    // 5. Camera
-    if (L.cam && (media.camReady || !L.cam.movable)) this.drawCam(ctx, L.cam, s.mirror);
+    // 5. Camera (unless it is already on the shared screen as its own window)
+    const camOnScreen = L.bg === 'screen' && useDesk.getState().camOnScreen;
+    if (L.cam && !camOnScreen && (media.camReady || !L.cam.movable)) this.drawCam(ctx, L.cam, s.mirror);
   }
 
   /** The page view, or a smooth zoom onto the current step when "Zoom to each step" is on. */

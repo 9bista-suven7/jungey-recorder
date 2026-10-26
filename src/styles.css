@@ -593,3 +593,24 @@ select.text-field { height: 34px; color: var(--text); }
 .chart-preview.dark { background: #14161f; }
 .chart-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 @media (max-width: 980px) { .chart-editor { grid-template-columns: 1fr; } }
+
+/* ------------------------------------------------------------------ drawing on a shared screen */
+
+.mini-wrap.desk { width: max-content; display: flex; flex-direction: column; }
+.mini-wrap.desk .mini { height: 56px; gap: 6px; padding-right: 10px; }
+.mini-wrap.desk .mini-status { flex: none; min-width: 74px; }
+.mini-wrap.desk .mini-btn { height: 34px; padding: 0 10px; }
+.mini-sep { width: 1px; height: 26px; background: #2e3342; margin: 0 4px; flex: none; }
+.mini-tool { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #c9ced8; flex: none; }
+.mini-tool:hover:not(:disabled) { background: #2a2f3d; color: #fff; }
+.mini-tool.on { background: var(--accent); color: #fff; }
+.mini-tool:disabled { opacity: 0.35; }
+.mini-swatch { width: 20px; height: 20px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.28); }
+.mini-swatch.on { box-shadow: 0 0 0 2px #15171d, 0 0 0 4px #fff; }
+.mini-stamps { display: flex; gap: 2px; padding: 6px 10px 0 30px; border-bottom: 1px solid #262a36; padding-bottom: 6px; }
+.mini-stamp { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; font-size: 22px; line-height: 1;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; }
+.mini-stamp:hover { background: #2a2f3d; }
+.mini-stamp.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.mini-badge { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font: 800 13px Inter, system-ui, sans-serif;
+  box-shadow: inset 0 0 0 2px #fff; }
