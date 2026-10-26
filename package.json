@@ -52,7 +52,8 @@
       ],
       "category": "Education",
       "maintainer": "Jungey",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "jungey-recorder-${version}-x86_64.${ext}"
     },
     "mac": {
       "target": "dmg",
@@ -63,7 +64,13 @@
       }
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "jungey-recorder-${version}-windows-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Jungey Recorder"
     }
   }
 }

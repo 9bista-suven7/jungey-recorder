@@ -35,6 +35,27 @@ Pick what you want to make on the start screen and you're ready to record. Board
 
 Everything stays on your computer. Nothing is uploaded.
 
+## Download
+
+**Linux (x64):** get `jungey-recorder-<version>-x86_64.AppImage` from the
+[latest release](https://github.com/9bista-suven7/jungey-recorder/releases/latest), then:
+
+```bash
+chmod +x jungey-recorder-*-x86_64.AppImage
+./jungey-recorder-*-x86_64.AppImage --no-sandbox
+```
+
+`--no-sandbox` is needed on Ubuntu 24.04 and newer (AppArmor blocks Electron's own sandbox for AppImages).
+If it doesn't start, install FUSE 2, which AppImages need: `sudo apt install libfuse2t64` on Ubuntu 24.04,
+`sudo apt install libfuse2` on 22.04. Install [ffmpeg](https://ffmpeg.org/download.html) too for the best MP4 files.
+
+**Windows (x64):** get `jungey-recorder-<version>-windows-setup.exe` from the
+[latest release](https://github.com/9bista-suven7/jungey-recorder/releases/latest) and run it. It installs for your
+user (no admin rights) and adds a Start menu shortcut. The installer isn't code-signed yet, so Windows SmartScreen may
+say "Windows protected your PC": click **More info → Run anyway**. Install ffmpeg with `winget install Gyan.FFmpeg`.
+
+**macOS:** not yet; build from source on a Mac as described below.
+
 ## What you need
 
 | | Needed for | Download |
@@ -111,18 +132,22 @@ Output goes to `release/`:
 
 | Platform | File | How to run it |
 |---|---|---|
-| Linux | `Jungey Recorder-<version>.AppImage` | `chmod +x` it, then `./Jungey\ Recorder-<version>.AppImage --no-sandbox` |
+| Linux | `jungey-recorder-<version>-x86_64.AppImage` | `chmod +x` it, then run it with `--no-sandbox` |
 | macOS | `.dmg` (build on a Mac) | Open and drag to Applications |
 | Windows | `.exe` installer (build on Windows) | Run the installer |
 
 Build each installer on its own platform. To also build a Linux `.deb`, add `"homepage"` and an author email to
 `package.json` and add `"deb"` to `build.linux.target`.
 
-To publish a version for download, create a GitHub release and attach the installer:
+**Publishing a version for download:** bump `version` in `package.json`, commit and push, then publish a release:
 
 ```bash
-gh release create v0.1.0 "release/Jungey Recorder-0.1.0.AppImage" --title "Jungey Recorder 0.1.0" --notes "First release"
+gh release create v0.2.0 --title "Jungey Recorder 0.2.0" --notes "What's new"
 ```
+
+Publishing the release starts the **Build installers** GitHub Actions workflow (`.github/workflows/release.yml`), which
+builds the Linux AppImage on Linux and the Windows installer on Windows and attaches both to the release, usually within
+about 10 minutes. You can also run it by hand from the repo's **Actions** tab for an existing tag.
 
 ## Where things are saved
 
