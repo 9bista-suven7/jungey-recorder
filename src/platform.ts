@@ -54,6 +54,8 @@ export interface Bridge {
     toolbar(size: { width: number; height: number }): void;
     /** Moves the face bubble window to this screen position. */
     moveCam(pos: { x: number; y: number }): void;
+    /** A wheel turn that reached the ink layer instead of the app underneath. */
+    wheel(d: { x: number; y: number }): void;
   };
   onProgress(cb: (p: { id: string; progress: number }) => void): () => void;
   onPickSource(cb: (list: ScreenSource[]) => void): () => void;

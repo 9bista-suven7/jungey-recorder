@@ -37,6 +37,9 @@ Pick what you want to make on the start screen and you're ready to record. Board
   apps again; your marks stay until you clear them. Your face bubble sits on the screen too, so you can drag it out of the way,
   and the video shows exactly what you see. (Windows leaves the floating controls out of the video; Linux can't,
   so drag them to a corner.)
+  Linux desktops with picom-style effects: the drawing layer is marked like a GTK window (`_GTK_FRAME_EXTENTS`) so
+  stock effects configs leave it unblurred; a custom config needs a rule such as
+  `{ match = "name = 'Jungey ink' || name = 'Jungey camera'"; blur-background = false; shadow = false; corner-radius = 0; }`.
 - **Recording:** 3-2-1 countdown, pause / resume, a floating mini control bar while you present another app,
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>P</kbd> work from any app. Chunks are written to disk as you record,
   so a crash doesn't lose the take (it is recovered on next start).

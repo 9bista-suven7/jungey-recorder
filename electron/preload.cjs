@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('jungey', {
     draw: (on) => ipcRenderer.send('desk:draw', !!on),
     toolbar: (size) => ipcRenderer.send('desk:toolbar', size),
     moveCam: (pos) => ipcRenderer.send('desk:moveCam', pos),
+    wheel: (d) => ipcRenderer.send('desk:wheel', d),
   },
   onProgress: (cb) => listen('job:progress', cb),
   onPickSource: (cb) => listen('screen:pick', cb),

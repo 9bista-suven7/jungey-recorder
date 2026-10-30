@@ -7,6 +7,7 @@ import { glowDot } from '../engine/sprites';
 import { clamp, uid } from '../lib/util';
 import { BADGE, deskActions, useDesk, type DeskMark, type Stamp } from './state';
 import { deskKey } from './DeskTools';
+import { bridge } from '../platform';
 
 const EMOJI_FONT = '"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
 const PEN = 6;
@@ -242,6 +243,9 @@ export function InkLayer() {
     c.addEventListener('pointermove', move);
     c.addEventListener('pointerup', up);
     c.addEventListener('pointercancel', up);
+    // Scrolling while drawing: the app gets these notches back (see the main process).
+    const wheel = (e: WheelEvent) => bridge.desk?.wheel({ x: e.deltaX, y: e.deltaY });
+    c.addEventListener('wheel', wheel, { passive: true });
     const unsub = useDesk.subscribe(() => {
       cursor();
       kick();

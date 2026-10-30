@@ -421,6 +421,45 @@ function shortcuts(keys, on, send) {
   }
 }
 
+// Linux desktops with picom-style effects blur and shadow whatever is behind a see-through window,
+// which would frost the whole screen under the ink layer. GTK's own client-side-decorated windows
+// carry _GTK_FRAME_EXTENTS, and nearly every effects config leaves those alone, so the overlays
+// carry it too. Nothing to do on Wayland (no overlays there) or other platforms.
+const SET_PROP_PY = `
+import ctypes, sys
+x = ctypes.CDLL('libX11.so.6')
+x.XOpenDisplay.restype = ctypes.c_void_p; x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x.XInternAtom.restype = ctypes.c_ulong; x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+x.XChangeProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+d = x.XOpenDisplay(None)
+w = int(sys.argv[1], 16)
+card = x.XInternAtom(d, b'CARDINAL', 0)
+x.XChangeProperty(d, w, x.XInternAtom(d, b'_GTK_FRAME_EXTENTS', 0), card, 32, 0, (ctypes.c_ulong * 4)(0, 0, 0, 0), 4)
+x.XChangeProperty(d, w, x.XInternAtom(d, b'_COMPTON_SHADOW', 0), card, 32, 0, (ctypes.c_ulong * 1)(0), 1)
+x.XCloseDisplay(d)
+`;
+function exemptFromDesktopEffects(w) {
+  if (process.platform !== 'linux' || process.env.XDG_SESSION_TYPE === 'wayland') return;
+  let id;
+  try {
+    id = '0x' + w.getNativeWindowHandle().readUInt32LE(0).toString(16);
+  } catch {
+    return;
+  }
+  const apply = () => {
+    if (w.isDestroyed()) return;
+    execFile('xprop', ['-id', id, '-f', '_GTK_FRAME_EXTENTS', '32c', '-set', '_GTK_FRAME_EXTENTS', '0, 0, 0, 0'], (e) => {
+      if (e) return execFile('python3', ['-c', SET_PROP_PY, id], () => {});
+      execFile('xprop', ['-id', id, '-f', '_COMPTON_SHADOW', '32c', '-set', '_COMPTON_SHADOW', '0'], () => {});
+    });
+  };
+  // Chromium clears the property while it sets the window up, so apply it once shown, and again a
+  // little later in case that happened after the first try.
+  w.once('show', apply);
+  for (const ms of [250, 1500]) setTimeout(apply, ms);
+}
+
 /** Number features from window.open ("left=10,top=20,width=300,height=200"). */
 function features(str) {
   const out = {};
@@ -445,7 +484,7 @@ ipcMain.handle('desk:end', () => {
   shortcuts(DESK_KEYS, false);
   shortcuts(DRAW_KEYS, false);
   drawing = false;
-  clearTimeout(wheelTimer);
+  clearInterval(wheelTimer);
   if (!desk) return;
   desk = null;
   if (win) {
@@ -458,7 +497,7 @@ ipcMain.handle('desk:end', () => {
 ipcMain.on('desk:draw', (_e, on) => {
   const ink = kid('jungey-ink');
   drawing = !!on;
-  clearTimeout(wheelTimer);
+  clearInterval(wheelTimer);
   if (!ink) return;
   ink.setIgnoreMouseEvents(!on);
   // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
@@ -466,17 +505,60 @@ ipcMain.on('desk:draw', (_e, on) => {
   restack();
 });
 
-// Scrolling while drawing: let the mouse through to the app underneath for a moment, then draw again.
-// Caught here as the wheel arrives, not in the page, so the next notch already scrolls.
+// Scrolling while drawing: the wheel can't reach the app through the ink layer, so on the first
+// notch the layer lets the mouse through, sends that notch again so it isn't lost, and stays out
+// of the way until the pointer moves on (you're about to draw again).
+const WHEEL_PY = `
+import ctypes, sys
+x = ctypes.CDLL('libX11.so.6'); t = ctypes.CDLL('libXtst.so.6')
+x.XOpenDisplay.restype = ctypes.c_void_p; x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x.XFlush.argtypes = [ctypes.c_void_p]; x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+t.XTestFakeButtonEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+d = x.XOpenDisplay(None)
+for b in sys.argv[1:]:
+    t.XTestFakeButtonEvent(d, int(b), 1, 0); t.XTestFakeButtonEvent(d, int(b), 0, 0)
+x.XFlush(d); x.XCloseDisplay(d)
+`;
+/** Wheel notches that hit the ink layer before the mouse went through (its page reports them). */
+let swallowed = null;
+function replayWheel({ x, y }) {
+  if (process.platform !== 'linux') return;
+  // One notch is about 100 px; a touchpad nudge smaller than half a notch is not worth sending.
+  const ticks = (v) => Math.min(3, Math.round(Math.abs(v) / 100));
+  const buttons = [];
+  for (let i = 0; i < ticks(y); i++) buttons.push(y > 0 ? 5 : 4);
+  for (let i = 0; i < ticks(x); i++) buttons.push(x > 0 ? 7 : 6);
+  if (buttons.length) execFile('python3', ['-c', WHEEL_PY, ...buttons.map(String)], () => {});
+}
+ipcMain.on('desk:wheel', (_e, d) => {
+  if (swallowed) {
+    swallowed.x += Number(d?.x) || 0;
+    swallowed.y += Number(d?.y) || 0;
+  }
+});
 function scrollThrough() {
   const ink = kid('jungey-ink');
   if (!ink || !drawing) return;
   ink.setIgnoreMouseEvents(true);
-  clearTimeout(wheelTimer);
-  wheelTimer = setTimeout(() => {
+  if (!swallowed) {
+    swallowed = { x: 0, y: 0 };
+    setTimeout(() => {
+      const s = swallowed;
+      swallowed = null;
+      if (drawing) replayWheel(s);
+    }, 120);
+  }
+  const from = screen.getCursorScreenPoint();
+  clearInterval(wheelTimer);
+  wheelTimer = setInterval(() => {
     const k = kid('jungey-ink');
-    if (k && drawing) k.setIgnoreMouseEvents(false);
-  }, 900);
+    if (!k || !drawing) return clearInterval(wheelTimer);
+    const p = screen.getCursorScreenPoint();
+    if (Math.hypot(p.x - from.x, p.y - from.y) > 12) {
+      clearInterval(wheelTimer);
+      k.setIgnoreMouseEvents(false);
+    }
+  }, 100);
 }
 
 ipcMain.on('desk:moveCam', (_e, pos) => {
@@ -576,6 +658,7 @@ function createWindow() {
     child.on('closed', () => kids.get(frameName) === child && kids.delete(frameName));
     child.setAlwaysOnTop(true, 'screen-saver');
     child.setVisibleOnAllWorkspaces(true);
+    if (frameName === 'jungey-ink' || frameName === 'jungey-cam') exemptFromDesktopEffects(child);
     if (frameName === 'jungey-ink') {
       // Clicks go through to your apps until you pick a drawing tool.
       child.setIgnoreMouseEvents(true);
