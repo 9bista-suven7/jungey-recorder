@@ -35,7 +35,9 @@ export class StreamRecorder {
     const mimeType = pickMime((await bridge.info()).hasFfmpeg);
     this.ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
     await bridge.rec.begin(this.id, this.ext);
-    const rec = new MediaRecorder(stream, { mimeType: mimeType || undefined, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 160_000 });
+    // Chromium's H.264 encoder lands at about half of what it is asked for (measured: 16 M → 7.8 Mbps),
+    // so ask for twice the ~8 Mbps that 1080p30 wants.
+    const rec = new MediaRecorder(stream, { mimeType: mimeType || undefined, videoBitsPerSecond: 16_000_000, audioBitsPerSecond: 160_000 });
     rec.ondataavailable = (e) => {
       if (!e.data.size) return;
       // Chunks are written strictly in order.
