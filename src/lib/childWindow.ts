@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 
 const open = new Map<string, { win: Window; root: Root }>();
+const closing = new Set<string>();
 
 function copyStyles(doc: Document) {
   for (const sheet of Array.from(document.styleSheets)) {
@@ -31,6 +32,8 @@ export interface ChildOptions {
   copyStyles?: boolean;
   css?: string;
   bodyClass?: string;
+  /** The window went away on its own (closed by hand, or with its parent), not through closeChild. */
+  onClosed?: () => void;
 }
 
 export function openChild(name: string, node: ReactNode, opts: ChildOptions): Window | null {
@@ -53,8 +56,10 @@ export function openChild(name: string, node: ReactNode, opts: ChildOptions): Wi
   root.render(node);
   open.set(name, { win: w, root });
   w.addEventListener('pagehide', () => {
-    root.unmount();
     if (open.get(name)?.win === w) open.delete(name);
+    // Unmounting straight from here can land inside a React commit; let it settle first.
+    queueMicrotask(() => root.unmount());
+    if (!closing.delete(name)) opts.onClosed?.();
   });
   return w;
 }
@@ -63,8 +68,13 @@ export function closeChild(name: string) {
   const c = open.get(name);
   if (!c) return;
   open.delete(name);
-  c.root.unmount();
+  closing.add(name);
   c.win.close();
+  // pagehide unmounts the root; if the window was already gone, do it here.
+  if (c.win.closed) {
+    closing.delete(name);
+    queueMicrotask(() => c.root.unmount());
+  }
 }
 
 export const childWindow = (name: string) => {

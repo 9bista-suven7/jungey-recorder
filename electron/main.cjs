@@ -500,6 +500,11 @@ ipcMain.on('desk:draw', (_e, on) => {
   clearInterval(wheelTimer);
   if (!ink) return;
   ink.setIgnoreMouseEvents(!on);
+  // Back to your apps: the layer and controls give up the keyboard too, so typing never re-arms a tool.
+  if (!on) {
+    ink.blur();
+    kid('jungey-mini')?.blur();
+  }
   // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
   shortcuts(DRAW_KEYS, !!on, (k) => (k === 'Escape' ? 'mouse' : 'undo'));
   restack();
@@ -521,33 +526,19 @@ x.XFlush(d); x.XCloseDisplay(d)
 `;
 /** Wheel notches that hit the ink layer before the mouse went through (its page reports them). */
 let swallowed = null;
-function replayWheel({ x, y }) {
-  if (process.platform !== 'linux') return;
-  // One notch is about 100 px; a touchpad nudge smaller than half a notch is not worth sending.
-  const ticks = (v) => Math.min(3, Math.round(Math.abs(v) / 100));
-  const buttons = [];
-  for (let i = 0; i < ticks(y); i++) buttons.push(y > 0 ? 5 : 4);
-  for (let i = 0; i < ticks(x); i++) buttons.push(x > 0 ? 7 : 6);
-  if (buttons.length) execFile('python3', ['-c', WHEEL_PY, ...buttons.map(String)], () => {});
+function replayWheel(buttons) {
+  if (process.platform !== 'linux' || !buttons.length) return;
+  execFile('python3', ['-c', WHEEL_PY, ...buttons.slice(0, 6).map(String)], () => {});
 }
 ipcMain.on('desk:wheel', (_e, d) => {
-  if (swallowed) {
-    swallowed.x += Number(d?.x) || 0;
-    swallowed.y += Number(d?.y) || 0;
-  }
+  if (!swallowed) return;
+  // One X button press per notch. Touchpad nudges smaller than a third of a notch are not worth it.
+  const y = Number(d?.y) || 0, x = Number(d?.x) || 0;
+  if (Math.abs(y) >= 40) swallowed.push(y > 0 ? 5 : 4);
+  else if (Math.abs(x) >= 40) swallowed.push(x > 0 ? 7 : 6);
 });
-function scrollThrough() {
-  const ink = kid('jungey-ink');
-  if (!ink || !drawing) return;
-  ink.setIgnoreMouseEvents(true);
-  if (!swallowed) {
-    swallowed = { x: 0, y: 0 };
-    setTimeout(() => {
-      const s = swallowed;
-      swallowed = null;
-      if (drawing) replayWheel(s);
-    }, 120);
-  }
+/** Takes the mouse back once the pointer moves on (you're about to draw again). */
+function watchPointer() {
   const from = screen.getCursorScreenPoint();
   clearInterval(wheelTimer);
   wheelTimer = setInterval(() => {
@@ -559,6 +550,23 @@ function scrollThrough() {
       k.setIgnoreMouseEvents(false);
     }
   }, 100);
+}
+function scrollThrough() {
+  const ink = kid('jungey-ink');
+  if (!ink || !drawing) return;
+  ink.setIgnoreMouseEvents(true);
+  if (swallowed) return; // a pass-through is already starting; its notches are being collected
+  swallowed = [];
+  clearInterval(wheelTimer);
+  // Collect the notches that still land here, send them again, and only then watch the pointer,
+  // so the replay can't bounce back into the layer.
+  setTimeout(() => {
+    const s = swallowed;
+    swallowed = null;
+    if (!drawing) return;
+    replayWheel(s);
+    watchPointer();
+  }, 120);
 }
 
 ipcMain.on('desk:moveCam', (_e, pos) => {

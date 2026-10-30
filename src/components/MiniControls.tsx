@@ -32,11 +32,14 @@ function MiniControls() {
     return () => ro.disconnect();
   }, [desk]);
 
+  // Tool keys, while a drawing tool is on. In pointer mode the keyboard belongs to your apps
+  // (the window manager may still hand this window the focus), so nothing is acted on here.
   useEffect(() => {
     if (!desk) return;
     const view = wrap.current!.ownerDocument.defaultView!;
-    view.addEventListener('keydown', deskKey);
-    return () => view.removeEventListener('keydown', deskKey);
+    const key = (e: KeyboardEvent) => useDesk.getState().tool !== 'mouse' && deskKey(e);
+    view.addEventListener('keydown', key);
+    return () => view.removeEventListener('keydown', key);
   }, [desk]);
 
   return (
@@ -88,6 +91,8 @@ function MiniControls() {
 export function openMiniControls() {
   openChild('jungey-mini', <MiniControls />, {
     title: 'Jungey controls',
+    // Closed by hand while presenting: back to the app (where Stop still is, if recording).
+    onClosed: () => useDesk.getState().on && closePresenter(),
     copyStyles: true,
     bodyClass: 'mini-body',
     features: useDesk.getState().on ? 'width=920,height=56' : 'width=392,height=64',

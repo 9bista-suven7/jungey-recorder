@@ -238,7 +238,9 @@ export function InkLayer() {
     cursor();
     view.addEventListener('resize', resize);
     // Clicking to draw gives this window the keyboard: Esc, Ctrl+Z and tool keys work here too.
-    view.addEventListener('keydown', deskKey);
+    // In pointer mode the keyboard belongs to your apps, so nothing is acted on here.
+    const key = (e: KeyboardEvent) => useDesk.getState().tool !== 'mouse' && deskKey(e);
+    view.addEventListener('keydown', key);
     c.addEventListener('pointerdown', down);
     c.addEventListener('pointermove', move);
     c.addEventListener('pointerup', up);
@@ -253,7 +255,7 @@ export function InkLayer() {
     return () => {
       unsub();
       view.removeEventListener('resize', resize);
-      view.removeEventListener('keydown', deskKey);
+      view.removeEventListener('keydown', key);
       if (raf) view.cancelAnimationFrame(raf);
     };
   }, []);

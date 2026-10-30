@@ -17,7 +17,8 @@ async function startDesk(): Promise<'screen' | 'window' | null> {
   const target = await bridge.desk?.begin().catch(() => null);
   if (target?.kind !== 'screen' || !target.bounds) return target?.kind ?? null;
   useDesk.setState({ on: true, tool: 'mouse', marks: [], nextBadge: 1, clearing: 0, camOnScreen: false, bounds: target.bounds });
-  openChild('jungey-ink', <InkLayer />, { title: 'Jungey ink', css: INK_CSS });
+  // Closing the layer by hand (Alt+F4 while drawing) ends presenting; the controls and bubble go with it.
+  openChild('jungey-ink', <InkLayer />, { title: 'Jungey ink', css: INK_CSS, onClosed: closePresenter });
   syncBubble();
   openMiniControls();
   return 'screen';
@@ -28,7 +29,11 @@ function syncBubble() {
   const { on, bounds, camOnScreen } = useDesk.getState();
   const want = on && !!bounds && useStore.getState().cam === 'on';
   if (want && !camOnScreen) {
-    openChild('jungey-cam', <CamBubble />, { title: 'Jungey camera', css: BUBBLE_CSS, features: bubbleFeatures(bounds!) });
+    openChild('jungey-cam', <CamBubble />, {
+      title: 'Jungey camera', css: BUBBLE_CSS, features: bubbleFeatures(bounds!),
+      // Closed by hand: the recording draws the camera in its corner again.
+      onClosed: () => useDesk.setState({ camOnScreen: false }),
+    });
     useDesk.setState({ camOnScreen: true });
   } else if (!want && camOnScreen) {
     closeChild('jungey-cam');
@@ -62,7 +67,8 @@ export function closePresenter() {
 }
 
 // Sharing stopped (from the system's own controls, say) while not recording: come back.
+// Deferred a tick: the store can change in the middle of a React commit (leaving the studio).
 useStore.subscribe((s, prev) => {
-  if (prev.screen === 'on' && s.screen !== 'on' && s.rec === 'idle' && useDesk.getState().on) closePresenter();
-  else if (s.cam !== prev.cam) syncBubble();
+  if (prev.screen === 'on' && s.screen !== 'on' && s.rec === 'idle' && useDesk.getState().on) queueMicrotask(closePresenter);
+  else if (s.cam !== prev.cam) queueMicrotask(syncBubble);
 });
