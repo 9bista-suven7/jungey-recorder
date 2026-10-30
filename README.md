@@ -31,7 +31,8 @@ Pick what you want to make on the start screen and you're ready to record. Board
   for 30 countries and compare them. For stock prices, use `=GOOGLEFINANCE(...)` in Google Sheets and paste the result.
 - **Steps and animations:** press <kbd>→</kbd> while recording to reveal the next step. Arrows draw themselves and data
   flows along them. Animate anything: pop, grow, jump in, slide, jump, shake, pulse, spin, collapse, regrow, run along an
-  arrow… Diagrams without steps reveal in arrow order automatically.
+  arrow… Tick **Keep repeating** and a jump, shake, pulse, spin, wiggle or glow keeps playing from its step on, with the
+  rest you choose between runs. Diagrams without steps reveal in arrow order automatically.
 - **Draw on your screen:** record your whole screen and draw right on top of any app: pen, highlighter, arrows,
   boxes, circles, emojis, numbered steps (1, 2, 3…) and a laser pointer. Click the pointer button (or press <kbd>Esc</kbd>) to use your
   apps again; your marks stay until you clear them. Your face bubble sits on the screen too, so you can drag it out of the way,

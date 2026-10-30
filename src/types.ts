@@ -65,6 +65,8 @@ export type FxKind =
 export interface Fx {
   step: number;
   kind: FxKind;
+  /** Keep repeating from that step on, with this many seconds of rest between runs. */
+  every?: number;
 }
 
 export type NodeShape =

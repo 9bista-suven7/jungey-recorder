@@ -2,6 +2,7 @@
 // everything up to k. Arrows without a step appear as soon as both their ends are visible.
 import type { DiagramEdge, DiagramNode, Fx, FxKind, Page } from '../types';
 import { isContext } from './geometry';
+import { LOOPABLE, loops } from './anim';
 
 export const nodesOf = (p?: Page) => p?.nodes ?? [];
 export const edgesOf = (p?: Page) => p?.edges ?? [];
@@ -89,8 +90,9 @@ export function removeStep(nodes: DiagramNode[], edges: DiagramEdge[], k: number
 }
 
 /** Adds an animation to elements, as a new last step or together with the last step. */
-export function addFx<T extends Stepped & { id: string }>(list: T[], ids: Set<string>, kind: FxKind, step: number): T[] {
-  return list.map((x) => (ids.has(x.id) ? { ...x, fx: [...(x.fx ?? []).filter((f) => f.step !== step), { step, kind }] } : x));
+export function addFx<T extends Stepped & { id: string }>(list: T[], ids: Set<string>, kind: FxKind, step: number, every?: number): T[] {
+  const fx: Fx = every !== undefined && LOOPABLE.has(kind) ? { step, kind, every } : { step, kind };
+  return list.map((x) => (ids.has(x.id) ? { ...x, fx: [...(x.fx ?? []).filter((f) => f.step !== step), fx] } : x));
 }
 
 export const FX_VERB: Record<FxKind, string> = {
@@ -105,7 +107,7 @@ export function stepLabels(nodes: DiagramNode[], edges: DiagramEdge[]) {
   const out: string[][] = [];
   for (const x of [...nodes, ...edges]) {
     if (x.step) (out[x.step - 1] ??= []).push(`${label(x)} appears`);
-    for (const f of x.fx ?? []) (out[f.step - 1] ??= []).push(`${label(x)} ${FX_VERB[f.kind]}`);
+    for (const f of x.fx ?? []) (out[f.step - 1] ??= []).push(`${label(x)} ${FX_VERB[f.kind]}${loops(f) ? ` every ${f.every} s` : ''}`);
   }
   return Array.from({ length: out.length }, (_, i) => out[i] ?? []);
 }

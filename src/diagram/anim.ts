@@ -152,6 +152,9 @@ export function applyFx(L: Look, kind: FxKind, p: number): boolean {
 
 const HIDES = new Set<FxKind>(['collapse', 'fadeout']);
 const SHOWS = new Set<FxKind>(['regrow']);
+/** Effects that can keep repeating: they leave the element where it was. */
+export const LOOPABLE = new Set<FxKind>(['jump', 'shake', 'pulse', 'spin', 'wiggle', 'glow']);
+export const loops = (f: Fx) => f.every !== undefined && LOOPABLE.has(f.kind);
 
 export interface Timing {
   presenting: boolean;
@@ -189,15 +192,25 @@ export function lookAt(appear: number, enter: EnterKind, fx: Fx[] | undefined, o
     applyEnter(L, enter, t / ENTER_MS[enter]);
   }
   for (const f of sorted) {
-    if (f.step !== S) continue;
-    L.current = true;
+    // A repeating effect started at an earlier step keeps going, on the current step's clock.
+    const running = loops(f) && f.step < S;
+    if (f.step !== S && !running) continue;
+    if (!running) L.current = true;
     if (SHOWS.has(f.kind)) visible = true;
     if (!visible) continue;
-    if (t < 0) {
+    const tf = running ? tm.since : t;
+    if (tf < 0) {
       if (f.kind === 'regrow') return null;
       continue;
     }
-    if (!applyFx(L, f.kind, FX_MS[f.kind] ? t / FX_MS[f.kind] : 1)) visible = false;
+    const ms = FX_MS[f.kind];
+    let p = ms ? tf / ms : 1;
+    if (loops(f) && ms) {
+      // Play, rest for `every` seconds, play again... Stepping back (no clock) shows it at rest.
+      const period = ms + f.every! * 1000;
+      p = Number.isFinite(tf) ? (tf % period) / ms : 1;
+    }
+    if (!applyFx(L, f.kind, p)) visible = false;
   }
   return visible ? L : null;
 }

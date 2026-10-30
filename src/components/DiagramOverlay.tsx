@@ -9,7 +9,7 @@ import { edgePath, nodeBounds, pickSides, sideMid } from '../diagram/geometry';
 import { CORNERS, SIDES, canConnect, cornerPoint, deleteSelection, handlePoint } from '../diagram/interact';
 import { addFx, presentedSteps, stepCount } from '../diagram/steps';
 import { COLOR_NAMES, NODE_COLORS_LIGHT, diagramTheme, themed } from '../diagram/theme';
-import { ENTER_LABEL, FX_LABEL } from '../diagram/anim';
+import { ENTER_LABEL, FX_LABEL, LOOPABLE } from '../diagram/anim';
 import { getBoardStyle, isOverlayLayout } from '../lib/boards';
 import { Popover } from './ui';
 import type { DiagramEdge, DiagramNode, EdgeRoute, EnterKind, FxKind } from '../types';
@@ -33,6 +33,8 @@ function useMapper(k: number) {
 function AnimateMenu({ nodes, edges, onDone }: { nodes: DiagramNode[]; edges: DiagramEdge[]; onDone: () => void }) {
   const page = useStore((s) => s.project?.pages[s.pageIndex]);
   const [together, setTogether] = useState(false);
+  /** Seconds of rest between runs of a repeating effect; null = play once. */
+  const [every, setEvery] = useState<number | null>(null);
   const isEdge = !nodes.length;
   const count = stepCount(page);
   const step = together && count ? count : count + 1;
@@ -46,15 +48,16 @@ function AnimateMenu({ nodes, edges, onDone }: { nodes: DiagramNode[]; edges: Di
       n2 = all.map((n) => (sel.has(n.id) ? { ...n, enter: kind as EnterKind, step: n.step ?? step } : n));
       e2 = allE.map((e) => (sel.has(e.id) ? { ...e, enter: kind as EnterKind, step: e.step ?? step } : e));
     } else {
-      n2 = addFx(all, sel, kind as FxKind, step);
-      e2 = addFx(allE, sel, kind as FxKind, step);
+      n2 = addFx(all, sel, kind as FxKind, step, every ?? undefined);
+      e2 = addFx(allE, sel, kind as FxKind, step, every ?? undefined);
     }
     actions.setDiagram(n2, e2);
     compositor.preview = { ids, kind, start: performance.now() };
     // An entrance plays when the element appears, which may be an earlier step than the next one.
     const at = enter ? Math.min(...[...n2, ...e2].filter((x) => sel.has(x.id)).map((x) => x.step ?? step)) : step;
     const what = enter ? ENTER_LABEL[kind as EnterKind] : FX_LABEL[kind as FxKind];
-    actions.toast(`${what} plays at step ${at}. While recording, press → to reach it.`);
+    const again = !enter && every !== null && LOOPABLE.has(kind as FxKind) ? `, then again every ${every} s` : '';
+    actions.toast(`${what} plays at step ${at}${again}. While recording, press → to reach it.`);
     onDone();
   };
 
@@ -73,10 +76,36 @@ function AnimateMenu({ nodes, edges, onDone }: { nodes: DiagramNode[]; edges: Di
       <div className="menu-label">Then, as step {step}</div>
       <div className="anim-grid">
         {fxList.map((k) => (
-          <button key={k} className="pill" onClick={() => apply(k, false)} onMouseEnter={() => (compositor.preview = { ids, kind: k, start: performance.now() })}>
+          <button
+            key={k}
+            className="pill"
+            disabled={every !== null && !LOOPABLE.has(k)}
+            title={every !== null && !LOOPABLE.has(k) ? 'This one plays once' : undefined}
+            onClick={() => apply(k, false)}
+            onMouseEnter={() => (compositor.preview = { ids, kind: k, start: performance.now() })}
+          >
             {FX_LABEL[k]}
           </button>
         ))}
+      </div>
+      <div className="toggle-row small anim-repeat">
+        <label>
+          <input type="checkbox" checked={every !== null} onChange={(e) => setEvery(e.target.checked ? 2 : null)} />
+          Keep repeating
+        </label>
+        {every !== null && (
+          <>
+            <span>with</span>
+            <select className="text-field tiny" value={every} onChange={(e) => setEvery(Number(e.target.value))} aria-label="Rest between runs">
+              {[1, 2, 3, 5, 10].map((s) => (
+                <option key={s} value={s}>
+                  {s} s
+                </option>
+              ))}
+            </select>
+            <span>of rest between runs</span>
+          </>
+        )}
       </div>
       {count > 0 && (
         <label className="toggle-row small">
