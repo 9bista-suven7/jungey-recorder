@@ -22,27 +22,41 @@ const STEP = 3;
 export class ScrollTracker {
   private canvas = new OffscreenCanvas(1, 1);
   private ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
-  private lastFind = -Infinity;
+  /** Frames since the last whole-screen search. */
+  private sinceFind = Infinity;
   private prev: Uint8Array | null = null;
   private w = 0;
   private h = 0;
   /** What the page looked like around the marks, and where they were then (half-scale px). */
   private anchor: { tpl: Uint8Array; tw: number; th: number; tx: number; ty: number; rx: number; ry: number } | null = null;
   private sinceAnchor = 0;
+  /** The scrolling panel the marks are in, once seen (half-scale columns). */
+  private panel: { x0: number; x1: number } | null = null;
   /** What the last comparison saw (for diagnostics). */
   last: { still: number; dx: number; dy: number; e: number; dys: number[]; dxs: number[] } | null = null;
 
   reset() {
     this.prev = null;
     this.anchor = null;
-    this.lastFind = -Infinity;
+    this.panel = null;
+    this.sinceFind = Infinity;
   }
 
   /** Remember the page around the marks (fully on screen, textured enough to find again). */
   private remember(cur: Uint8Array, rx: number, ry: number, rw: number, rh: number) {
     const w = this.w, h = this.h;
-    const tw = Math.min(240, Math.max(64, Math.round(rw + 40))), th = Math.min(160, Math.max(48, Math.round(rh + 40)));
-    const tx = Math.round(rx + rw / 2 - tw / 2), ty = Math.round(ry + rh / 2 - th / 2);
+    let tw = Math.min(240, Math.max(64, Math.round(rw + 40)));
+    const th = Math.min(160, Math.max(120, Math.round(rh + 40)));
+    let tx = Math.round(rx + rw / 2 - tw / 2);
+    const ty = Math.round(Math.min(Math.max(ry + rh / 2 - th / 2, 0), this.h - th));
+    // Only from the panel that scrolls (a still sidebar next to it would pin the marks in place),
+    // and wide enough to take in its text, not just the blank margin a mark often sits in.
+    if (this.panel) {
+      const pw = this.panel.x1 - this.panel.x0;
+      if (pw < 32) return;
+      tw = Math.min(240, pw);
+      tx = Math.round(Math.min(Math.max(rx + rw / 2 - tw / 2, this.panel.x0), this.panel.x1 - tw));
+    }
     if (tx < 0 || ty < 0 || tx + tw > w || ty + th > h) return;
     const tpl = new Uint8Array(tw * th);
     let sum = 0, sq = 0;
@@ -53,7 +67,7 @@ export class ScrollTracker {
       sq += v * v;
     }
     const n = tw * th, sd = Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2));
-    if (sd < 12) return; // a blank area could be found anywhere
+    if (sd < 4) return; // a blank area could be found anywhere
     this.anchor = { tpl, tw, th, tx, ty, rx, ry };
     this.sinceAnchor = 0;
   }
@@ -89,7 +103,10 @@ export class ScrollTracker {
     if (!this.anchor) return null;
     const ex = this.expected(rx, ry);
     const here = this.costAt(cur, ex.x, ex.y);
-    if (here < 6) {
+    // "Still here" only if it matches far better than the same patch a little above and below:
+    // pages full of text look alike everywhere, so a low difference alone proves nothing.
+    const around = Math.min(...[-53, -37, 37, 53].map((d) => this.costAt(cur, ex.x, ex.y + d)).filter(Number.isFinite), Infinity);
+    if (here < 8 && here < around * 0.5) {
       // Close by: settle on the exact pixel.
       let bx = ex.x, by = ex.y, be = here;
       for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
@@ -98,10 +115,9 @@ export class ScrollTracker {
       }
       return bx !== ex.x || by !== ex.y ? { dx: bx - ex.x, dy: by - ex.y } : null;
     }
-    // The whole-screen search is the expensive part: a few times a second is plenty.
-    const now = performance.now();
-    if (!urgent && now - this.lastFind < 250) return null;
-    this.lastFind = now;
+    // The whole-screen search is the expensive part: every 8th frame (about 4 a second) is plenty.
+    if (!urgent && this.sinceFind < 8) return null;
+    this.sinceFind = 0;
     const at = this.find(cur);
     return at ? { dx: at.x - ex.x, dy: at.y - ex.y } : null;
   }
@@ -140,9 +156,11 @@ export class ScrollTracker {
     if (!scored.length) return null;
     scored.sort((p, r) => p.e - r.e);
     const best = scored[0];
-    // Something else that looks just as good (repeated rows of code, say): don't guess.
+    // It must stand out: far better than a typical spot, and than anything else that looks
+    // alike (repeated rows of code, say). Otherwise don't guess.
+    const typical = scored[scored.length >> 1].e;
     const rival = scored.find((c) => Math.abs(c.y - best.y) > 6 || Math.abs(c.x - best.x) > 6);
-    if (best.e > 14 || (rival && best.e > rival.e * 0.7)) return null;
+    if (best.e > typical * 0.4 || (rival && best.e > rival.e * 0.6)) return null;
     // Exact pixel at half scale.
     let fx = best.x * 2, fy = best.y * 2, fe = Infinity;
     for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
@@ -151,7 +169,7 @@ export class ScrollTracker {
       const e = cost(cur, w, a.tpl, a.tw, a.th, x, y, 2);
       if (e < fe) { fe = e; fx = x; fy = y; }
     }
-    return fe < 12 ? { x: fx, y: fy } : null;
+    return fe < typical * 0.4 ? { x: fx, y: fy } : null;
   }
 
   /**
@@ -171,6 +189,7 @@ export class ScrollTracker {
     for (let i = 0, j = 0; i < cur.length; i++, j += 4) cur[i] = (rgba[j] * 77 + rgba[j + 1] * 150 + rgba[j + 2] * 29) >> 8;
     const prev = this.prev;
     this.prev = cur;
+    this.sinceFind++;
     if (!prev) return null;
 
     // The patch to follow: around the marks, clipped to the screen. Marks scrolled out of view
@@ -193,7 +212,7 @@ export class ScrollTracker {
     };
     [x0, x1] = grow(x0, x1, w);
     [y0, y1] = grow(y0, y1, h);
-    const pw = x1 - x0, ph = y1 - y0;
+    let pw = x1 - x0, ph = y1 - y0;
 
     // Quick 1D guesses from row and column sums, then the real check on pixels.
     const rows = (img: Uint8Array, from: number, to: number) => {
@@ -230,10 +249,12 @@ export class ScrollTracker {
       scored.sort((a, b) => a.e - b.e);
       return scored.slice(0, 3).map((g) => g.d);
     };
-    const rc = rows(cur, y0, y1), rp = rows(prev, Math.max(0, y0 - reach), Math.min(h, y1 + reach));
-    const cc = cols(cur, x0, x1), cp = cols(prev, Math.max(0, x0 - reach), Math.min(w, x1 + reach));
-    const dys = guesses(rc, rp, Math.max(0, y0 - reach), y0, reach);
-    const dxs = guesses(cc, cp, Math.max(0, x0 - reach), x0, reach);
+    const guessAll = () => {
+      const rc = rows(cur, y0, y1), rp = rows(prev, Math.max(0, y0 - reach), Math.min(h, y1 + reach));
+      const cc = cols(cur, x0, x1), cp = cols(prev, Math.max(0, x0 - reach), Math.min(w, x1 + reach));
+      return [guesses(rc, rp, Math.max(0, y0 - reach), y0, reach), guesses(cc, cp, Math.max(0, x0 - reach), x0, reach)];
+    };
+    let [dys, dxs] = guessAll();
 
     // Sum of pixel differences for a candidate (dx, dy), sampled.
     const sad = (dx: number, dy: number) => {
@@ -250,7 +271,7 @@ export class ScrollTracker {
       }
       return n ? e / n : Infinity;
     };
-    const still = sad(0, 0);
+    let still = sad(0, 0);
     this.last = { still, dx: 0, dy: 0, e: still, dys, dxs };
 
     // The marks as they are now (half-scale px), and whether they are all on screen.
@@ -274,6 +295,88 @@ export class ScrollTracker {
       if (visible && (!this.anchor || ++this.sinceAnchor > 15)) this.remember(cur, rx, ry, rw, rh);
       return null; // nothing changed
     }
+
+    // Follow only the panel the marks are in. A screen often has parts that stand still next to
+    // the part that scrolls (a sidebar, a toolbar, another window), and those would make a real
+    // scroll look like no scroll at all. Columns are split into strips; the moving strips around
+    // the marks (small still gaps, like blank margins, allowed) are the panel. Still rows at its
+    // top and bottom (a fixed header) are dropped too.
+    const STRIP = 8;
+    const strips = Math.ceil(w / STRIP);
+    const moving = new Uint8Array(strips);
+    for (let k = 0; k < strips; k++) {
+      let e = 0, n = 0;
+      const xb = Math.min(w, k * STRIP + STRIP);
+      for (let y = y0; y < y1; y += 3) for (let x = k * STRIP; x < xb; x += 2) {
+        e += Math.abs(cur[y * w + x] - prev[y * w + x]);
+        n++;
+      }
+      moving[k] = n && e / n > 1.5 ? 1 : 0;
+    }
+    const ka = Math.max(0, Math.floor(rx / STRIP)), kb = Math.min(strips - 1, Math.floor((rx + rw) / STRIP));
+    let seed = -1;
+    for (let k = ka; k <= kb && seed < 0; k++) if (moving[k]) seed = k;
+    // A mark in a blank margin sits on columns that look the same after a scroll: take the
+    // moving content close beside it (within ~130 px) as its panel.
+    for (let d = 1; d <= 8 && seed < 0; d++) {
+      if (ka - d >= 0 && moving[ka - d]) seed = ka - d;
+      else if (kb + d < strips && moving[kb + d]) seed = kb + d;
+    }
+    if (seed < 0) {
+      // The marks sit on a part that stood still: they stay. (Out of view, look nearby instead.)
+      if (visible) return null;
+      for (let d = 0; d < strips && seed < 0; d++) {
+        if (moving[Math.max(0, ka - d)]) seed = Math.max(0, ka - d);
+        else if (moving[Math.min(strips - 1, kb + d)]) seed = Math.min(strips - 1, kb + d);
+      }
+    }
+    if (seed >= 0) {
+      const GAP = 6;
+      let lo = seed, hi = seed;
+      for (let k = seed - 1, gap = 0; k >= 0 && gap <= GAP; k--) moving[k] ? ((lo = k), (gap = 0)) : gap++;
+      for (let k = seed + 1, gap = 0; k < strips && gap <= GAP; k++) moving[k] ? ((hi = k), (gap = 0)) : gap++;
+      x0 = lo * STRIP;
+      x1 = Math.min(w, hi * STRIP + STRIP);
+      const rowMoves = (y: number) => {
+        let e = 0, n = 0;
+        for (let x = x0; x < x1; x += 2) {
+          e += Math.abs(cur[y * w + x] - prev[y * w + x]);
+          n++;
+        }
+        return e / n > 1.5;
+      };
+      // A scroll moves nearly every row of the panel that has something on it; a box appearing or
+      // a video playing doesn't. (Blank rows look the same either way, so they don't count.)
+      const hasContent = (img: Uint8Array, y: number) => {
+        let lo = 255, hi = 0;
+        for (let x = x0; x < x1; x += 2) {
+          const v = img[y * w + x];
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        return hi - lo > 24;
+      };
+      let movingRows = 0, contentRows = 0;
+      for (let y = y0; y < y1; y++) {
+        if (!hasContent(cur, y) && !hasContent(prev, y)) continue;
+        contentRows++;
+        if (rowMoves(y)) movingRows++;
+      }
+      if (movingRows < contentRows * 0.5) return null;
+      while (y1 - y0 > 48 && !rowMoves(y0)) y0++;
+      while (y1 - y0 > 48 && !rowMoves(y1 - 1)) y1--;
+      this.panel = { x0, x1 };
+      // A remembered spot that reaches outside the panel is taken again, from the panel alone,
+      // out of the frame before this one (where the marks still were where they are now).
+      if (this.anchor && (this.anchor.tx < x0 || this.anchor.tx + this.anchor.tw > x1)) {
+        this.anchor = null;
+        if (visible) this.remember(prev, rx, ry, rw, rh);
+      }
+      pw = x1 - x0;
+      ph = y1 - y0;
+      [dys, dxs] = guessAll();
+      still = sad(0, 0);
+    }
     let best = { dx: 0, dy: 0, e: still };
     const tryAt = (dx: number, dy: number) => {
       if (dx === best.dx && dy === best.dy) return;
@@ -282,16 +385,18 @@ export class ScrollTracker {
     };
     for (const dy of dys) tryAt(0, dy);
     for (const dx of dxs) tryAt(dx, 0);
-    if (best.dx === 0 && best.dy === 0) return null;
+    const found = best.dx !== 0 || best.dy !== 0;
     // Settle on the exact pixel.
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; found && k < 2; k++) {
       const { dx, dy } = best;
       for (const [ex, ey] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) tryAt(dx + ex, dy + ey);
     }
     // A real scroll lines the frames up far better than leaving them be; anything less is just
     // the page changing (a video playing, text being typed).
     this.last = { still, dx: best.dx / s, dy: best.dy / s, e: best.e, dys, dxs };
-    const ok = best.e <= still * 0.55;
+    // A real scroll lines the frames up far better than standing still; a lookalike match after a
+    // jump too big to follow does not.
+    const ok = found && best.e <= still * 0.35;
     if (this.anchor) {
       // Trust the remembered spot over a frame-to-frame guess (a jump may be too big to follow).
       // Right after the page moved, a lost spot means a jump: search now, not in a while.
