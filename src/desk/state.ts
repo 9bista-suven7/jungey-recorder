@@ -48,6 +48,8 @@ interface DeskState {
   offset: { x: number; y: number };
   /** Marks follow the page as it scrolls. */
   follow: boolean;
+  /** Where the page the marks follow scrolls (screen px); they are hidden past its edges. */
+  area: { x: number; y: number; w: number; h: number } | null;
 }
 
 export const useDesk = create<DeskState>()(() => ({
@@ -63,6 +65,7 @@ export const useDesk = create<DeskState>()(() => ({
   bounds: null,
   offset: { x: 0, y: 0 },
   follow: true,
+  area: null,
 }));
 
 export const deskActions = {
@@ -107,6 +110,6 @@ export const deskActions = {
   clear() {
     if (!useDesk.getState().marks.length) return;
     useDesk.setState({ clearing: performance.now() });
-    setTimeout(() => useDesk.setState({ marks: [], nextBadge: 1, clearing: 0, offset: { x: 0, y: 0 } }), 260);
+    setTimeout(() => useDesk.setState({ marks: [], nextBadge: 1, clearing: 0, offset: { x: 0, y: 0 }, area: null }), 260);
   },
 };

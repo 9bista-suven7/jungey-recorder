@@ -375,10 +375,14 @@ class Compositor {
     if (this.tracking) return;
     if (!this.tracker) {
       this.tracker = new Worker(new URL('../desk/trackWorker.ts', import.meta.url), { type: 'module' });
-      this.tracker.onmessage = (e: MessageEvent<{ shift: { dx: number; dy: number } | null; last: unknown }>) => {
+      this.tracker.onmessage = (e: MessageEvent<{ shift: { dx: number; dy: number } | null; last: unknown; area: { x: number; y: number; w: number; h: number } | null }>) => {
         this.tracking = false;
-        const { shift, last } = e.data;
-        if (shift && useDesk.getState().on) deskActions.scrolled(shift.dx, shift.dy);
+        const { shift, last, area } = e.data;
+        const d = useDesk.getState();
+        if (!d.on) return;
+        if (shift) deskActions.scrolled(shift.dx, shift.dy);
+        const a = d.area;
+        if (area && (!a || a.x !== area.x || a.y !== area.y || a.w !== area.w || a.h !== area.h)) useDesk.setState({ area });
         if (import.meta.env.DEV) {
           const log = ((window as unknown as { __track?: unknown[] }).__track ??= []);
           log.push({ t: Math.round(performance.now()), ...(last as object), ok: !!shift });

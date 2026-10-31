@@ -12,5 +12,5 @@ self.onmessage = (e: MessageEvent<{ reset?: boolean; frame?: ImageBitmap; screen
   if (!m.frame) return;
   const shift = tracker.update(m.frame, m.screenW, m.screenH, m.region);
   m.frame.close();
-  self.postMessage({ shift, last: tracker.last });
+  self.postMessage({ shift, last: tracker.last, area: tracker.area });
 };

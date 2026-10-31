@@ -32,6 +32,8 @@ export class ScrollTracker {
   private sinceAnchor = 0;
   /** The scrolling panel the marks are in, once seen (half-scale columns). */
   private panel: { x0: number; x1: number } | null = null;
+  /** The part of the screen that panel scrolls in (screen px): marks are hidden outside it. */
+  area: Rect | null = null;
   /** What the last comparison saw (for diagnostics). */
   last: { still: number; dx: number; dy: number; e: number; dys: number[]; dxs: number[] } | null = null;
 
@@ -39,6 +41,7 @@ export class ScrollTracker {
     this.prev = null;
     this.anchor = null;
     this.panel = null;
+    this.area = null;
     this.sinceFind = Infinity;
   }
 
@@ -365,6 +368,47 @@ export class ScrollTracker {
       if (movingRows < contentRows * 0.5) return null;
       while (y1 - y0 > 48 && !rowMoves(y0)) y0++;
       while (y1 - y0 > 48 && !rowMoves(y1 - 1)) y1--;
+      // The area marks are shown in: every row and column of this panel seen moving so far (inside
+      // a page some rows look the same after a scroll, like the middle of a card, so it builds up
+      // over frames), widened through blank rows and margins up to whatever has content but
+      // stays put (a header, a footer, a message box, a sidebar).
+      const samePanel = this.panel && Math.abs(this.panel.x0 - x0) < 24 && Math.abs(this.panel.x1 - x1) < 24;
+      let top = h, bottom = 0;
+      for (let y = 0; y < h; y++) if (rowMoves(y)) { if (y < top) top = y; bottom = y + 1; }
+      if (bottom > top) {
+        // Blank and the same background as the row next to it: a header or a sidebar with its
+        // own colour is where it stops.
+        const rowMean = (y: number) => {
+          let t = 0, n = 0;
+          for (let x = x0; x < x1; x += 4) { t += cur[y * w + x]; n++; }
+          return t / n;
+        };
+        const blankRow = (y: number, next: number) => !hasContent(cur, y) && Math.abs(rowMean(y) - rowMean(next)) < 6;
+        while (top > 0 && blankRow(top - 1, top)) top--;
+        while (bottom < h && blankRow(bottom, bottom - 1)) bottom++;
+        const col = (x: number) => {
+          let lo = 255, hi = 0, t = 0, n = 0;
+          for (let y = top; y < bottom; y += 2) {
+            const v = cur[y * w + x];
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+            t += v;
+            n++;
+          }
+          return { blank: hi - lo <= 24, mean: t / n };
+        };
+        const blankCol = (x: number, next: number) => {
+          const a = col(x);
+          return a.blank && Math.abs(a.mean - col(next).mean) < 6;
+        };
+        let ax0 = x0, ax1 = x1;
+        while (ax0 > 0 && blankCol(ax0 - 1, ax0)) ax0--;
+        while (ax1 < w && blankCol(ax1, ax1 - 1)) ax1++;
+        const a = samePanel && this.area ? this.area : null;
+        const L = Math.min(ax0 / s, a ? a.x : Infinity), R = Math.max(ax1 / s, a ? a.x + a.w : 0);
+        const T = Math.min(top / s, a ? a.y : Infinity), B = Math.max(bottom / s, a ? a.y + a.h : 0);
+        this.area = { x: L, y: T, w: R - L, h: B - T };
+      }
       this.panel = { x0, x1 };
       // A remembered spot that reaches outside the panel is taken again, from the panel alone,
       // out of the frame before this one (where the marks still were where they are now).

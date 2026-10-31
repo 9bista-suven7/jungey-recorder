@@ -104,12 +104,19 @@ export function InkLayer() {
     const c = ref.current!;
     const view = c.ownerDocument.defaultView!;
     const ctx = c.getContext('2d')!;
-    // Finished strokes and shapes, redrawn only when they change.
+    // Finished strokes and shapes, redrawn only when they change: marks in the scrolling panel
+    // (hidden past its edges) and the rest.
     const cache = c.ownerDocument.createElement('canvas');
     const cctx = cache.getContext('2d')!;
+    const other = c.ownerDocument.createElement('canvas');
+    const octx = other.getContext('2d')!;
     let dpr = 1;
     let cached: DeskMark[] | null = null;
+    let cachedArea: unknown = null;
     let cachedOffset = { x: 0, y: 0 };
+    /** Where the marks are shown: glides toward the tracked offset, so they move smoothly. */
+    let shown = { x: 0, y: 0 };
+    let lastFrame = performance.now();
     let live: DeskMark | null = null;
     let start: { x: number; y: number } | null = null;
     const laser: { x: number; y: number; t: number }[] = [];
@@ -119,38 +126,83 @@ export function InkLayer() {
       if (!raf) raf = view.requestAnimationFrame(frame);
     };
 
+    /** Is this mark in the panel that scrolls (judged by where its middle is now)? */
+    const inArea = (m: DeskMark, area: { x: number; y: number; w: number; h: number } | null, off: { x: number }) => {
+      if (!area) return false;
+      const cx = m.kind === 'stroke' ? (Math.min(...m.points.filter((_, i) => i % 3 === 0)) + Math.max(...m.points.filter((_, i) => i % 3 === 0))) / 2
+        : m.kind === 'shape' ? (m.x1 + m.x2) / 2 : m.x;
+      return cx + off.x >= area.x && cx + off.x <= area.x + area.w;
+    };
+
     function frame() {
       raf = 0;
       const now = performance.now();
       const s = useDesk.getState();
-      const off = s.offset;
-      // The cache is three screens tall (one above, one below), drawn at `cachedOffset`; while the
-      // page scrolls it just slides, and is drawn again only when the marks change, the page
-      // moves sideways, or it has slid most of a screen.
       const H = c.height / dpr;
-      const slide = { x: off.x - cachedOffset.x, y: off.y - cachedOffset.y };
-      if (s.marks !== cached || slide.x !== 0 || Math.abs(slide.y) > H * 0.8) {
-        cctx.setTransform(1, 0, 0, 1, 0, 0);
-        cctx.clearRect(0, 0, cache.width, cache.height);
-        const at = { x: off.x, y: off.y + H };
-        for (const m of s.marks) drawMark(cctx, m, dpr, false, at);
-        cached = s.marks;
-        cachedOffset = off;
-        slide.x = slide.y = 0;
-      }
       let animating = false;
+
+      // Glide toward where the page is (a jump of most of a screen snaps).
+      const target = s.offset;
+      const gx = target.x - shown.x, gy = target.y - shown.y;
+      if (Math.abs(gy) > H * 0.6 || Math.abs(gx) > 400 || (Math.abs(gx) < 0.3 && Math.abs(gy) < 0.3)) shown = { ...target };
+      else {
+        const k = 1 - Math.exp(-Math.min(64, now - lastFrame) / 55);
+        shown = { x: shown.x + gx * k, y: shown.y + gy * k };
+        animating = true;
+      }
+      lastFrame = now;
+      const off = shown;
+
+      // The caches are three screens tall (one above, one below), drawn at `cachedOffset`; while
+      // the page scrolls they just slide, and are drawn again only when the marks change, the
+      // page moves sideways, or they have slid most of a screen.
+      const slide = { x: off.x - cachedOffset.x, y: off.y - cachedOffset.y };
+      if (s.marks !== cached || s.area !== cachedArea || Math.abs(slide.x) > 0.5 || Math.abs(slide.y) > H * 0.8) {
+        for (const g of [cctx, octx]) {
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, cache.width, cache.height);
+        }
+        const at = { x: Math.round(off.x), y: Math.round(off.y) + H };
+        for (const m of s.marks) drawMark(inArea(m, s.area, off) ? cctx : octx, m, dpr, false, at);
+        cached = s.marks;
+        cachedArea = s.area;
+        cachedOffset = { x: Math.round(off.x), y: Math.round(off.y) };
+        slide.x = off.x - cachedOffset.x;
+        slide.y = off.y - cachedOffset.y;
+      }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.globalAlpha = s.clearing ? clamp(1 - (now - s.clearing) / 250, 0, 1) : 1;
       if (s.clearing) animating = true;
-      ctx.drawImage(cache, 0, Math.round((slide.y - H) * dpr));
-      ctx.setTransform(dpr, 0, 0, dpr, off.x * dpr, off.y * dpr);
-      for (const m of s.marks) {
-        if (m.kind !== 'stamp') continue;
-        drawStamp(ctx, m, now);
-        if (now - m.born < POP_MS) animating = true;
+      const dy = Math.round((slide.y - H) * dpr);
+      ctx.drawImage(other, 0, dy);
+      // Marks in the scrolling panel go out of sight at its edges, like the page does.
+      const a = s.area;
+      const clipTo = () => {
+        ctx.beginPath();
+        ctx.rect(a!.x * dpr, a!.y * dpr, a!.w * dpr, a!.h * dpr);
+        ctx.clip();
+      };
+      ctx.save();
+      if (a) clipTo();
+      ctx.drawImage(cache, 0, dy);
+      ctx.restore();
+      for (const clipped of [false, true]) {
+        ctx.save();
+        if (clipped && a) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          clipTo();
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, off.x * dpr, off.y * dpr);
+        for (const m of s.marks) {
+          if (m.kind !== 'stamp' || inArea(m, a, off) !== clipped) continue;
+          drawStamp(ctx, m, now);
+          if (now - m.born < POP_MS) animating = true;
+        }
+        ctx.restore();
       }
       ctx.globalAlpha = 1;
+      ctx.setTransform(dpr, 0, 0, dpr, off.x * dpr, off.y * dpr);
       if (live?.kind === 'stamp') {
         drawStamp(ctx, live, now);
         if (now - live.born < POP_MS) animating = true;
@@ -168,9 +220,9 @@ export function InkLayer() {
 
     const resize = () => {
       dpr = view.devicePixelRatio || 1;
-      c.width = cache.width = Math.round(view.innerWidth * dpr);
+      c.width = cache.width = other.width = Math.round(view.innerWidth * dpr);
       c.height = Math.round(view.innerHeight * dpr);
-      cache.height = c.height * 3;
+      cache.height = other.height = c.height * 3;
       cached = null;
       kick();
     };

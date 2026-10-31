@@ -32,7 +32,7 @@ async function startDesk(): Promise<'screen' | 'window' | null> {
     if (target?.kind === 'screen') target = await bridge.desk?.begin(screenHint()).catch(() => null);
   }
   if (target?.kind !== 'screen' || !target.bounds) return target?.kind ?? null;
-  useDesk.setState({ on: true, tool: 'mouse', marks: [], nextBadge: 1, clearing: 0, camOnScreen: false, bounds: target.bounds, offset: { x: 0, y: 0 } });
+  useDesk.setState({ on: true, tool: 'mouse', marks: [], nextBadge: 1, clearing: 0, camOnScreen: false, bounds: target.bounds, offset: { x: 0, y: 0 }, area: null });
   // Closing the layer by hand (Alt+F4 while drawing) ends presenting; the controls and bubble go with it.
   openChild('jungey-ink', <InkLayer />, { title: 'Jungey ink', css: INK_CSS, onClosed: () => void closePresenter() });
   syncBubble();
