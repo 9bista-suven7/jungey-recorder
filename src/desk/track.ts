@@ -1,6 +1,9 @@
 // Follows the page under your marks as it scrolls, so a circle around a paragraph stays on that
 // paragraph. Works from the shared-screen video alone: compare each frame with the last one
 // around the marks, find the vertical / horizontal shift that lines them up, and move the marks.
+// While the marks are on screen it also remembers what the page looks like around them; once
+// they scroll out of view it looks for that spot in every frame and puts them back exactly there
+// when it returns (also after a Page Down too big to follow, and without drift).
 export interface Rect {
   x: number;
   y: number;
@@ -21,11 +24,128 @@ export class ScrollTracker {
   private prev: Uint8Array | null = null;
   private w = 0;
   private h = 0;
+  /** What the page looked like around the marks, and where they were then (half-scale px). */
+  private anchor: { tpl: Uint8Array; tw: number; th: number; tx: number; ty: number; rx: number; ry: number } | null = null;
+  private sinceAnchor = 0;
+  private searches = 0;
   /** What the last comparison saw (for diagnostics). */
   last: { still: number; dx: number; dy: number; e: number; dys: number[]; dxs: number[] } | null = null;
 
   reset() {
     this.prev = null;
+    this.anchor = null;
+  }
+
+  /** Remember the page around the marks (fully on screen, textured enough to find again). */
+  private remember(cur: Uint8Array, rx: number, ry: number, rw: number, rh: number) {
+    const w = this.w, h = this.h;
+    const tw = Math.min(240, Math.max(64, Math.round(rw + 40))), th = Math.min(160, Math.max(48, Math.round(rh + 40)));
+    const tx = Math.round(rx + rw / 2 - tw / 2), ty = Math.round(ry + rh / 2 - th / 2);
+    if (tx < 0 || ty < 0 || tx + tw > w || ty + th > h) return;
+    const tpl = new Uint8Array(tw * th);
+    let sum = 0, sq = 0;
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+      const v = cur[(ty + y) * w + tx + x];
+      tpl[y * tw + x] = v;
+      sum += v;
+      sq += v * v;
+    }
+    const n = tw * th, sd = Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2));
+    if (sd < 12) return; // a blank area could be found anywhere
+    this.anchor = { tpl, tw, th, tx, ty, rx, ry };
+    this.sinceAnchor = 0;
+  }
+
+  /** How different the remembered spot is from this frame at (x, y), half-scale px; Infinity if off screen. */
+  private costAt(cur: Uint8Array, x: number, y: number) {
+    const a = this.anchor!, w = this.w;
+    x = Math.round(x);
+    y = Math.round(y);
+    if (x < 0 || y < 0 || x + a.tw > w || y + a.th > this.h) return Infinity;
+    let e = 0, n = 0;
+    for (let ty = 0; ty < a.th; ty += 2) {
+      const row = (y + ty) * w + x, trow = ty * a.tw;
+      for (let tx = 0; tx < a.tw; tx += 2) {
+        e += Math.abs(cur[row + tx] - a.tpl[trow + tx]);
+        n++;
+      }
+    }
+    return e / n;
+  }
+
+  /** Where the remembered spot should be for marks at (rx, ry), half-scale px. */
+  private expected(rx: number, ry: number) {
+    const a = this.anchor!;
+    return { x: a.tx + (rx - a.rx), y: a.ty + (ry - a.ry) };
+  }
+
+  /**
+   * Check the remembered spot near where the marks are now expected; if they have slipped (a jump
+   * too big to follow, or drift), say how far to move them. Searches the whole frame when needed.
+   */
+  private verify(cur: Uint8Array, rx: number, ry: number): { dx: number; dy: number } | null {
+    if (!this.anchor) return null;
+    const ex = this.expected(rx, ry);
+    const here = this.costAt(cur, ex.x, ex.y);
+    if (here < 6) {
+      // Close by: settle on the exact pixel.
+      let bx = ex.x, by = ex.y, be = here;
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const e = this.costAt(cur, ex.x + dx, ex.y + dy);
+        if (e < be - 0.3) { be = e; bx = ex.x + dx; by = ex.y + dy; }
+      }
+      return bx !== ex.x || by !== ex.y ? { dx: bx - ex.x, dy: by - ex.y } : null;
+    }
+    const at = this.find(cur);
+    return at ? { dx: at.x - ex.x, dy: at.y - ex.y } : null;
+  }
+
+  /** Where the remembered spot is in this frame, if it is clearly there (half-scale px). */
+  private find(cur: Uint8Array): { x: number; y: number } | null {
+    const a = this.anchor!, w = this.w, h = this.h;
+    // Coarse pass at quarter scale over the whole height and a band around the old column.
+    const q = (img: Uint8Array, iw: number, ih: number) => {
+      const qw = iw >> 1, qh = ih >> 1, out = new Uint8Array(qw * qh);
+      for (let y = 0; y < qh; y++) for (let x = 0; x < qw; x++) {
+        const i = 2 * y * iw + 2 * x;
+        out[y * qw + x] = (img[i] + img[i + 1] + img[i + iw] + img[i + iw + 1]) >> 2;
+      }
+      return { img: out, w: qw, h: qh };
+    };
+    const S = q(cur, w, h), T = q(a.tpl, a.tw, a.th);
+    const cost = (img: Uint8Array, iw: number, tpl: Uint8Array, tw: number, th: number, x: number, y: number, step: number) => {
+      let e = 0, n = 0;
+      for (let ty = 0; ty < th; ty += step) {
+        const row = (y + ty) * iw + x, trow = ty * tw;
+        for (let tx = 0; tx < tw; tx += step) {
+          e += Math.abs(img[row + tx] - tpl[trow + tx]);
+          n++;
+        }
+      }
+      return e / n;
+    };
+    const cx = a.tx >> 1, band = 40;
+    const scored: { x: number; y: number; e: number }[] = [];
+    for (let y = 0; y + T.h <= S.h; y += 1) {
+      for (let x = Math.max(0, cx - band); x <= Math.min(S.w - T.w, cx + band); x += 2) {
+        scored.push({ x, y, e: cost(S.img, S.w, T.img, T.w, T.h, x, y, 2) });
+      }
+    }
+    if (!scored.length) return null;
+    scored.sort((p, r) => p.e - r.e);
+    const best = scored[0];
+    // Something else that looks just as good (repeated rows of code, say): don't guess.
+    const rival = scored.find((c) => Math.abs(c.y - best.y) > 6 || Math.abs(c.x - best.x) > 6);
+    if (best.e > 14 || (rival && best.e > rival.e * 0.7)) return null;
+    // Exact pixel at half scale.
+    let fx = best.x * 2, fy = best.y * 2, fe = Infinity;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = best.x * 2 + dx, y = best.y * 2 + dy;
+      if (x < 0 || y < 0 || x + a.tw > w || y + a.th > h) continue;
+      const e = cost(cur, w, a.tpl, a.tw, a.th, x, y, 2);
+      if (e < fe) { fe = e; fx = x; fy = y; }
+    }
+    return fe < 12 ? { x: fx, y: fy } : null;
   }
 
   /**
@@ -126,7 +246,29 @@ export class ScrollTracker {
     };
     const still = sad(0, 0);
     this.last = { still, dx: 0, dy: 0, e: still, dys, dxs };
-    if (still < 0.8) return null; // nothing changed
+
+    // The marks as they are now (half-scale px), and whether they are all on screen.
+    const rx = region.x * s, ry = region.y * s, rw = region.w * s, rh = region.h * s;
+    const visible = rx >= 0 && ry >= 0 && rx + rw <= w && ry + rh <= h;
+    if (!visible && this.anchor && this.searches++ % 4 === 0) {
+      // Out of view: watch for the remembered spot coming back and put the marks right there
+      // (a whole-screen search, so every 4th frame is plenty).
+      const fix = this.verify(cur, rx, ry);
+      if (fix) {
+        this.last = { still, dx: fix.dx / s, dy: fix.dy / s, e: -1, dys, dxs };
+        return { dx: fix.dx / s, dy: fix.dy / s };
+      }
+    }
+    if (still < 0.8) {
+      if (visible && this.anchor) {
+        // A quiet frame: make sure the marks still sit on their spot (undo any drift)...
+        const fix = this.verify(cur, rx, ry);
+        if (fix) return { dx: fix.dx / s, dy: fix.dy / s };
+      }
+      // ...and now and then remember the page around them afresh.
+      if (visible && (!this.anchor || ++this.sinceAnchor > 15)) this.remember(cur, rx, ry, rw, rh);
+      return null; // nothing changed
+    }
     let best = { dx: 0, dy: 0, e: still };
     const tryAt = (dx: number, dy: number) => {
       if (dx === best.dx && dy === best.dy) return;
@@ -144,7 +286,14 @@ export class ScrollTracker {
     // A real scroll lines the frames up far better than leaving them be; anything less is just
     // the page changing (a video playing, text being typed).
     this.last = { still, dx: best.dx / s, dy: best.dy / s, e: best.e, dys, dxs };
-    if (best.e > still * 0.55) return null;
+    const ok = best.e <= still * 0.55;
+    if (this.anchor) {
+      // Trust the remembered spot over a frame-to-frame guess (a jump may be too big to follow).
+      const fix = this.verify(cur, rx + (ok ? best.dx : 0), ry + (ok ? best.dy : 0));
+      const dx = (ok ? best.dx : 0) + (fix?.dx ?? 0), dy = (ok ? best.dy : 0) + (fix?.dy ?? 0);
+      return dx || dy ? { dx: dx / s, dy: dy / s } : null;
+    }
+    if (!ok) return null;
     return { dx: best.dx / s, dy: best.dy / s };
   }
 }

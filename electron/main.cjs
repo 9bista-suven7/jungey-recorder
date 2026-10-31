@@ -659,6 +659,18 @@ function createWindow() {
 
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.on('closed', () => { endDesk(); win = null; });
+  // Bringing this window back while presenting: put the pen down, so the see-through layer
+  // stops taking clicks and the app's own buttons (Record...) work.
+  const penDown = () => {
+    if (!desk || !drawing) return;
+    drawing = false;
+    kid('jungey-ink')?.setIgnoreMouseEvents(true);
+    shortcuts(DRAW_KEYS, false);
+    win?.webContents.send('shortcut', 'mouse');
+  };
+  win.on('restore', penDown);
+  win.on('show', penDown);
+  win.on('focus', penDown);
   win.webContents.on('render-process-gone', endDesk);
   win.webContents.on('did-start-navigation', (ev, _url, inPlace, mainFrame) => {
     if ((ev?.isMainFrame ?? mainFrame) && !(ev?.isSameDocument ?? inPlace)) endDesk();
