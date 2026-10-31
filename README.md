@@ -35,7 +35,8 @@ Pick what you want to make on the start screen and you're ready to record. Board
   rest you choose between runs. Diagrams without steps reveal in arrow order automatically.
 - **Draw on your screen:** record your whole screen and draw right on top of any app: pen, highlighter, arrows,
   boxes, circles, emojis, numbered steps (1, 2, 3…) and a laser pointer. Click the pointer button (or press <kbd>Esc</kbd>) to use your
-  apps again; your marks stay until you clear them. Your face bubble sits on the screen too, so you can drag it out of the way,
+  apps again. Scroll and your marks move with the page, so a circle stays on the paragraph you drew it around; they stay
+  until you clear them. The floating bar also has Record / Stop, Change screen, and a way back to the app. Your face bubble sits on the screen too, so you can drag it out of the way,
   and the video shows exactly what you see. (Windows leaves the floating controls out of the video; Linux can't,
   so drag them to a corner.)
   Linux desktops with picom-style effects: the drawing layer is marked like a GTK window (`_GTK_FRAME_EXTENTS`) so

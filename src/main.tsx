@@ -9,11 +9,12 @@ import { compositor } from './engine/compositor';
 import { actions, useStore } from './store';
 import { useDesk } from './desk/state';
 import { useDiagramUI } from './diagram/ui';
+import { media } from './engine/media';
 
 // Text on the board uses Caveat; redraw once it has loaded.
 void document.fonts.load('600 48px Caveat').then(() => compositor.fontsVersion++);
 
 // Handy for poking at the app from the devtools console while developing.
-if (import.meta.env.DEV) Object.assign(window, { __jungey: { useStore, actions, compositor, useDesk, useDiagramUI } });
+if (import.meta.env.DEV) Object.assign(window, { __jungey: { useStore, actions, compositor, useDesk, useDiagramUI, media } });
 
 createRoot(document.getElementById('root')!).render(<App />);

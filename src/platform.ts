@@ -47,7 +47,7 @@ export interface Bridge {
   /** Desktop only: drawing on top of a shared whole screen. */
   desk?: {
     /** Starts presenting what was just shared; for a whole screen, returns the area it covers. */
-    begin(): Promise<{ kind: 'screen' | 'window' | null; bounds: { x: number; y: number; width: number; height: number } | null }>;
+    begin(hint: { surface?: string; width?: number; height?: number }): Promise<{ kind: 'screen' | 'window' | null; bounds: { x: number; y: number; width: number; height: number } | null }>;
     end(): Promise<void>;
     /** true: the ink layer takes the mouse; false: clicks go through to your apps. */
     draw(on: boolean): void;

@@ -53,7 +53,7 @@ function drawStamp(ctx: CanvasRenderingContext2D, s: Stamp, now: number) {
 }
 
 /** Strokes and shapes, with a faint shadow so they read on any background. */
-function drawMark(ctx: CanvasRenderingContext2D, m: DeskMark, dpr: number, live = false) {
+function drawMark(ctx: CanvasRenderingContext2D, m: DeskMark, dpr: number, live = false, off = { x: 0, y: 0 }) {
   if (m.kind === 'stamp') return;
   ctx.save();
   if (!(m.kind === 'stroke' && m.pen === 'highlighter')) {
@@ -61,7 +61,7 @@ function drawMark(ctx: CanvasRenderingContext2D, m: DeskMark, dpr: number, live 
     ctx.shadowBlur = 4 * dpr;
     ctx.shadowOffsetY = dpr;
   }
-  drawItem(ctx, m, { scale: dpr, ox: 0, oy: 0 }, false, undefined, live);
+  drawItem(ctx, m, { scale: dpr, ox: off.x * dpr, oy: off.y * dpr }, false, undefined, live);
   ctx.restore();
 }
 
@@ -109,6 +109,7 @@ export function InkLayer() {
     const cctx = cache.getContext('2d')!;
     let dpr = 1;
     let cached: DeskMark[] | null = null;
+    let cachedOffset = { x: 0, y: 0 };
     let live: DeskMark | null = null;
     let start: { x: number; y: number } | null = null;
     const laser: { x: number; y: number; t: number }[] = [];
@@ -122,11 +123,13 @@ export function InkLayer() {
       raf = 0;
       const now = performance.now();
       const s = useDesk.getState();
-      if (s.marks !== cached) {
+      const off = s.offset;
+      if (s.marks !== cached || off !== cachedOffset) {
         cctx.setTransform(1, 0, 0, 1, 0, 0);
         cctx.clearRect(0, 0, cache.width, cache.height);
-        for (const m of s.marks) drawMark(cctx, m, dpr);
+        for (const m of s.marks) drawMark(cctx, m, dpr, false, off);
         cached = s.marks;
+        cachedOffset = off;
       }
       let animating = false;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -134,7 +137,7 @@ export function InkLayer() {
       ctx.globalAlpha = s.clearing ? clamp(1 - (now - s.clearing) / 250, 0, 1) : 1;
       if (s.clearing) animating = true;
       ctx.drawImage(cache, 0, 0);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, off.x * dpr, off.y * dpr);
       for (const m of s.marks) {
         if (m.kind !== 'stamp') continue;
         drawStamp(ctx, m, now);
@@ -145,7 +148,7 @@ export function InkLayer() {
         drawStamp(ctx, live, now);
         if (now - live.born < POP_MS) animating = true;
       } else if (live) {
-        drawMark(ctx, live, dpr, true);
+        drawMark(ctx, live, dpr, true, off);
       }
       while (laser.length && now - laser[0].t > LASER_LIFE) laser.shift();
       if (laser.length) {
@@ -169,10 +172,16 @@ export function InkLayer() {
       c.style.cursor = t === 'laser' ? 'none' : t === 'mouse' ? 'default' : 'crosshair';
     };
 
+    // Where a screen point is on the page (marks are kept in page space).
+    const page = (cx: number, cy: number) => {
+      const o = useDesk.getState().offset;
+      return [cx - o.x, cy - o.y];
+    };
+
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return;
       const s = useDesk.getState();
-      const x = e.clientX, y = e.clientY;
+      const [x, y] = page(e.clientX, e.clientY);
       c.setPointerCapture(e.pointerId);
       switch (s.tool) {
         case 'pen':
@@ -212,13 +221,18 @@ export function InkLayer() {
       }
       if (!live) return;
       if (live.kind === 'stroke') {
-        for (const ev of e.getCoalescedEvents?.() ?? [e]) live.points.push(ev.clientX, ev.clientY, ev.pointerType === 'pen' ? ev.pressure : 0.5);
+        for (const ev of e.getCoalescedEvents?.() ?? [e]) {
+          const [px, py] = page(ev.clientX, ev.clientY);
+          live.points.push(px, py, ev.pointerType === 'pen' ? ev.pressure : 0.5);
+        }
       } else if (live.kind === 'shape') {
-        const p = e.shiftKey ? constrainShape(live, e.clientX, e.clientY) : { x: e.clientX, y: e.clientY };
+        const [px, py] = page(e.clientX, e.clientY);
+        const p = e.shiftKey ? constrainShape(live, px, py) : { x: px, y: py };
         live = { ...live, x2: p.x, y2: p.y };
       } else if (start) {
         // Drag while stamping to make it bigger.
-        const d = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+        const [px, py] = page(e.clientX, e.clientY);
+        const d = Math.hypot(px - start.x, py - start.y);
         if (d > 12) live = { ...live, size: clamp(d * 2, 32, 520) };
       }
       kick();

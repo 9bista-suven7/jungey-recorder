@@ -2,12 +2,12 @@
 // you're presenting in "Screen + me". While you present your whole screen it also has the
 // drawing tools for the ink layer on top of it.
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { AppWindow, Pause, Play, Square } from 'lucide-react';
+import { AppWindow, MonitorUp, Pause, Play, Square } from 'lucide-react';
 import { useStore } from '../store';
 import { cancelCountdown, startRecording, stopRecording, togglePause } from '../engine/session';
 import { bridge } from '../platform';
 import { closeChild, openChild } from '../lib/childWindow';
-import { closePresenter } from '../desk/present';
+import { closePresenter, shareScreen } from '../desk/present';
 import { useDesk } from '../desk/state';
 import { DeskTools, StampRow, deskKey } from '../desk/DeskTools';
 import { Timer } from './TopBar';
@@ -75,12 +75,17 @@ function MiniControls() {
           </>
         )}
         {desk && <DeskTools />}
-        {desk && rec === 'idle' && (
+        {desk && (
           <>
             <span className="mini-sep" />
-            <button className="mini-tool" onClick={closePresenter} title="Back to Jungey Recorder" aria-label="Back to Jungey Recorder">
-              <AppWindow size={18} />
+            <button className="mini-tool" onClick={() => void shareScreen()} title="Change screen" aria-label="Change screen">
+              <MonitorUp size={18} />
             </button>
+            {rec === 'idle' && (
+              <button className="mini-tool" onClick={() => void closePresenter()} title="Back to Jungey Recorder" aria-label="Back to Jungey Recorder">
+                <AppWindow size={18} />
+              </button>
+            )}
           </>
         )}
       </div>
@@ -92,7 +97,7 @@ export function openMiniControls() {
   openChild('jungey-mini', <MiniControls />, {
     title: 'Jungey controls',
     // Closed by hand while presenting: back to the app (where Stop still is, if recording).
-    onClosed: () => useDesk.getState().on && closePresenter(),
+    onClosed: () => useDesk.getState().on && void closePresenter(),
     copyStyles: true,
     bodyClass: 'mini-body',
     features: useDesk.getState().on ? 'width=920,height=56' : 'width=392,height=64',

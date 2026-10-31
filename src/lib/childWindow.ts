@@ -64,6 +64,12 @@ export function openChild(name: string, node: ReactNode, opts: ChildOptions): Wi
   return w;
 }
 
+// This page going away takes its floating windows with it; they can't live without it.
+window.addEventListener('pagehide', () => {
+  for (const c of open.values()) c.win.close();
+  open.clear();
+});
+
 export function closeChild(name: string) {
   const c = open.get(name);
   if (!c) return;

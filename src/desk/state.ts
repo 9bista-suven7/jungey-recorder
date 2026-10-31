@@ -44,6 +44,10 @@ interface DeskState {
   camOnScreen: boolean;
   /** The shared screen's area, in screen coordinates. */
   bounds: { x: number; y: number; width: number; height: number } | null;
+  /** Marks are kept where they were drawn on the page; this is how far that page has scrolled since. */
+  offset: { x: number; y: number };
+  /** Marks follow the page as it scrolls. */
+  follow: boolean;
 }
 
 export const useDesk = create<DeskState>()(() => ({
@@ -57,6 +61,8 @@ export const useDesk = create<DeskState>()(() => ({
   clearing: 0,
   camOnScreen: false,
   bounds: null,
+  offset: { x: 0, y: 0 },
+  follow: true,
 }));
 
 export const deskActions = {
@@ -87,6 +93,10 @@ export const deskActions = {
       nextBadge: mark.kind === 'stamp' && mark.badge ? s.nextBadge + 1 : s.nextBadge,
     }));
   },
+  /** The page under the marks moved: keep them on it. */
+  scrolled(dx: number, dy: number) {
+    useDesk.setState((s) => ({ offset: { x: s.offset.x + dx, y: s.offset.y + dy } }));
+  },
   undo() {
     useDesk.setState((s) => {
       const last = s.marks[s.marks.length - 1];
@@ -97,6 +107,6 @@ export const deskActions = {
   clear() {
     if (!useDesk.getState().marks.length) return;
     useDesk.setState({ clearing: performance.now() });
-    setTimeout(() => useDesk.setState({ marks: [], nextBadge: 1, clearing: 0 }), 260);
+    setTimeout(() => useDesk.setState({ marks: [], nextBadge: 1, clearing: 0, offset: { x: 0, y: 0 } }), 260);
   },
 };

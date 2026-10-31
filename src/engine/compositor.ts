@@ -11,7 +11,9 @@ import { drawDiagram, drawDiagramStatic } from '../diagram/render';
 import { liveNodes, useDiagramUI } from '../diagram/ui';
 import { boundsOf } from '../diagram/geometry';
 import { presented } from '../diagram/steps';
-import { useDesk } from '../desk/state';
+import { deskActions, useDesk } from '../desk/state';
+import { ScrollTracker } from '../desk/track';
+import { marksRegion } from '../desk/geometry';
 import type { DiagramNode, EnterKind, FxKind, Item, Page, Pattern, View } from '../types';
 
 const ease = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
@@ -342,7 +344,50 @@ class Compositor {
     }
   }
 
+  private tracker = new ScrollTracker();
+  private trackedAt = 0;
+  private frameLoop = false;
+
+  /**
+   * Presenting with marks on the screen: keep them on the page as it scrolls. Runs on every new
+   * frame of the shared screen (a timer can keep reading the same picture while this window is
+   * minimised), falling back to the render loop where frame callbacks don't exist.
+   */
+  private followPage(now: number) {
+    const v = media.screenVideo;
+    if ('requestVideoFrameCallback' in v) {
+      if (this.frameLoop) return;
+      this.frameLoop = true;
+      const tick = () => {
+        this.trackFrame(performance.now());
+        v.requestVideoFrameCallback(tick);
+      };
+      v.requestVideoFrameCallback(tick);
+      return;
+    }
+    if (now - this.trackedAt < 50) return;
+    this.trackedAt = now;
+    this.trackFrame(now);
+  }
+
+  private trackFrame(now: number) {
+    const d = useDesk.getState();
+    if (!d.on || !d.follow || !d.marks.length || !d.bounds || !media.screenReady) {
+      this.tracker.reset();
+      return;
+    }
+    const region = marksRegion(d.marks, d.offset);
+    const shift = this.tracker.update(media.screenVideo, d.bounds.width, d.bounds.height, region);
+    if (shift) deskActions.scrolled(shift.dx, shift.dy);
+    if (import.meta.env.DEV) {
+      const log = ((window as unknown as { __track?: unknown[] }).__track ??= []);
+      log.push({ t: Math.round(now), ...(this.tracker.last ?? {}), ok: !!shift, region });
+      if (log.length > 400) log.splice(0, log.length - 400);
+    }
+  }
+
   render(now: number) {
+    this.followPage(now);
     const s = useStore.getState();
     const p = s.project;
     if (!p) return;

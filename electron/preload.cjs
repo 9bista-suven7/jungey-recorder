@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('jungey', {
   },
   worldBank: (args) => ipcRenderer.invoke('data:worldbank', args),
   desk: {
-    begin: () => ipcRenderer.invoke('desk:begin'),
+    begin: (hint) => ipcRenderer.invoke('desk:begin', hint),
     end: () => ipcRenderer.invoke('desk:end'),
     draw: (on) => ipcRenderer.send('desk:draw', !!on),
     toolbar: (size) => ipcRenderer.send('desk:toolbar', size),

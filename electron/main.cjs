@@ -364,6 +364,12 @@ async function handleDisplayMedia(_request, callback) {
         id: s.id, name: s.name, kind: s.id.startsWith('screen') ? 'screen' : 'window', thumb: s.thumbnail.toDataURL(),
       }));
       pickResolver?.(null);
+      // The picker lives in the app window; while presenting that window is out of the way.
+      if (win.isMinimized()) {
+        win.restore();
+        win.show();
+        win.focus();
+      }
       const id = await new Promise((resolve) => { pickResolver = resolve; win.webContents.send('screen:pick', list); });
       chosen = sources.find((s) => s.id === id) || null;
     }
@@ -392,15 +398,30 @@ const kids = new Map();
 const DESK_KEYS = ['Alt+Shift+D'];
 const DRAW_KEYS = ['Escape', 'CommandOrControl+Z'];
 
-function sourceBounds(src) {
+/** The area the shared screen covers. `hint` is what the captured video track reports. */
+function sourceBounds(src, hint) {
   const all = screen.getAllDisplays();
-  const match = all.find((d) => String(d.id) === String(src.displayId));
+  const match = src && all.find((d) => String(d.id) === String(src.displayId));
   if (match) return match.bounds;
   if (all.length === 1) return all[0].bounds;
+  // Linux and the macOS system picker don't say which display: the one whose pixel size matches
+  // the capture, preferring the display the pointer is on when several are the same size.
+  const w = Number(hint?.width) || 0, h = Number(hint?.height) || 0;
+  const same = all.filter((d) => Math.round(d.size.width * d.scaleFactor) === w && Math.round(d.size.height * d.scaleFactor) === h);
+  if (same.length) {
+    const near = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    return (same.find((d) => d.id === near.id) || same[0]).bounds;
+  }
   // One capture of every monitor together (X11): cover them all.
   const x0 = Math.min(...all.map((d) => d.bounds.x)), y0 = Math.min(...all.map((d) => d.bounds.y));
   const x1 = Math.max(...all.map((d) => d.bounds.x + d.bounds.width)), y1 = Math.max(...all.map((d) => d.bounds.y + d.bounds.height));
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/** Where the floating controls go: bottom middle of the shared screen, else top middle. */
+function miniPlace(width, height) {
+  const area = (desk ? screen.getDisplayMatching(desk.bounds) : screen.getPrimaryDisplay()).workArea;
+  return { x: Math.round(area.x + area.width / 2 - width / 2), y: desk ? area.y + area.height - height - 20 : area.y + 16, width, height };
 }
 
 const kid = (name) => {
@@ -454,9 +475,9 @@ function exemptFromDesktopEffects(w) {
       execFile('xprop', ['-id', id, '-f', '_COMPTON_SHADOW', '32c', '-set', '_COMPTON_SHADOW', '0'], () => {});
     });
   };
-  // Chromium clears the property while it sets the window up, so apply it once shown, and again a
-  // little later in case that happened after the first try.
-  w.once('show', apply);
+  // Chromium clears the property while it finishes setting the window up, so apply it now and
+  // again a little later.
+  apply();
   for (const ms of [250, 1500]) setTimeout(apply, ms);
 }
 
@@ -470,10 +491,26 @@ function features(str) {
   return out;
 }
 
-ipcMain.handle('desk:begin', () => {
-  const kind = lastSource ? (lastSource.id.startsWith('screen') ? 'screen' : 'window') : null;
+/** Everything presenting holds in this process, let go: shortcuts, timers, the floating windows. */
+function endDesk() {
+  shortcuts(DESK_KEYS, false);
+  shortcuts(DRAW_KEYS, false);
+  drawing = false;
+  swallowed = null;
+  clearInterval(wheelTimer);
+  desk = null;
+  for (const name of ['jungey-cam', 'jungey-mini', 'jungey-ink']) kid(name)?.destroy();
+}
+
+// `hint` comes from the captured video track: surface ('monitor' / 'window') and pixel size. It
+// stands in for the picker's choice when the picker was the system's own (macOS 15+).
+ipcMain.handle('desk:begin', (_e, hint) => {
+  // Wayland can't place windows over the screen: the shared screen shows inside the app instead.
+  if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') return { kind: 'window', bounds: null };
+  const surface = typeof hint?.surface === 'string' ? hint.surface : null;
+  const kind = lastSource ? (lastSource.id.startsWith('screen') ? 'screen' : 'window') : surface === 'monitor' ? 'screen' : surface ? 'window' : null;
   if (kind !== 'screen') return { kind, bounds: null };
-  desk = { bounds: sourceBounds(lastSource) };
+  desk = { bounds: sourceBounds(lastSource, hint) };
   shortcuts(DESK_KEYS, true, () => 'draw');
   // Out of the way, so the recording starts on your screen, not on this window.
   win?.minimize();
@@ -481,32 +518,28 @@ ipcMain.handle('desk:begin', () => {
 });
 
 ipcMain.handle('desk:end', () => {
-  shortcuts(DESK_KEYS, false);
-  shortcuts(DRAW_KEYS, false);
-  drawing = false;
-  clearInterval(wheelTimer);
-  if (!desk) return;
-  desk = null;
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  }
+  const was = !!desk;
+  endDesk();
+  if (!was || !win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 });
 
 ipcMain.on('desk:draw', (_e, on) => {
   const ink = kid('jungey-ink');
-  drawing = !!on;
+  drawing = !!on && !!ink;
+  swallowed = null;
   clearInterval(wheelTimer);
+  // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
+  shortcuts(DRAW_KEYS, drawing, (k) => (k === 'Escape' ? 'mouse' : 'undo'));
   if (!ink) return;
-  ink.setIgnoreMouseEvents(!on);
+  ink.setIgnoreMouseEvents(!drawing);
   // Back to your apps: the layer and controls give up the keyboard too, so typing never re-arms a tool.
-  if (!on) {
+  if (!drawing) {
     ink.blur();
     kid('jungey-mini')?.blur();
   }
-  // While drawing, Esc goes back to using your apps and Ctrl+Z takes back the last mark.
-  shortcuts(DRAW_KEYS, !!on, (k) => (k === 'Escape' ? 'mouse' : 'undo'));
   restack();
 });
 
@@ -526,9 +559,15 @@ x.XFlush(d); x.XCloseDisplay(d)
 `;
 /** Wheel notches that hit the ink layer before the mouse went through (its page reports them). */
 let swallowed = null;
-function replayWheel(buttons) {
-  if (process.platform !== 'linux' || !buttons.length) return;
-  execFile('python3', ['-c', WHEEL_PY, ...buttons.slice(0, 6).map(String)], () => {});
+let replaying = false;
+function replayWheel(buttons, done) {
+  if (process.platform !== 'linux' || !buttons.length) return done();
+  replaying = true;
+  // The helper exits after XFlush, so by the callback the notches are in the X server.
+  execFile('python3', ['-c', WHEEL_PY, ...buttons.slice(0, 6).map(String)], () => {
+    replaying = false;
+    done();
+  });
 }
 ipcMain.on('desk:wheel', (_e, d) => {
   if (!swallowed) return;
@@ -553,19 +592,18 @@ function watchPointer() {
 }
 function scrollThrough() {
   const ink = kid('jungey-ink');
-  if (!ink || !drawing) return;
+  if (!ink || !drawing || replaying) return;
   ink.setIgnoreMouseEvents(true);
   if (swallowed) return; // a pass-through is already starting; its notches are being collected
   swallowed = [];
   clearInterval(wheelTimer);
-  // Collect the notches that still land here, send them again, and only then watch the pointer,
-  // so the replay can't bounce back into the layer.
+  // Collect the notches that still land here, send them again, and only once they are out watch
+  // the pointer, so the replay can't bounce back into the layer.
   setTimeout(() => {
     const s = swallowed;
     swallowed = null;
     if (!drawing) return;
-    replayWheel(s);
-    watchPointer();
+    replayWheel(s, () => drawing && watchPointer());
   }, 120);
 }
 
@@ -620,7 +658,11 @@ function createWindow() {
   });
 
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { endDesk(); win = null; });
+  win.webContents.on('render-process-gone', endDesk);
+  win.webContents.on('did-start-navigation', (ev, _url, inPlace, mainFrame) => {
+    if ((ev?.isMainFrame ?? mainFrame) && !(ev?.isSameDocument ?? inPlace)) endDesk();
+  });
 
   // Floating windows the page opens with window.open: recording controls, and while presenting
   // a whole screen, the ink layer over it and the face bubble.
@@ -633,14 +675,10 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ frameName, url, features: feat }) => {
     const f = features(feat);
     if (frameName === 'jungey-mini') {
-      const width = f.width || 392, height = f.height || 64;
       // Over a shared screen: bottom middle, clear of what you're showing. Otherwise: top middle.
-      const area = (desk ? screen.getDisplayMatching(desk.bounds) : screen.getPrimaryDisplay()).workArea;
-      const x = Math.round(area.x + area.width / 2 - width / 2);
-      const y = desk ? area.y + area.height - height - 20 : area.y + 16;
       return {
         action: 'allow',
-        overrideBrowserWindowOptions: { ...floating, width, height, x, y, backgroundColor: '#15171d', title: 'Jungey controls' },
+        overrideBrowserWindowOptions: { ...floating, ...miniPlace(f.width || 392, f.height || 64), backgroundColor: '#15171d', title: 'Jungey controls' },
       };
     }
     if (frameName === 'jungey-ink' && desk) {
@@ -670,6 +708,13 @@ function createWindow() {
     if (frameName === 'jungey-ink') {
       // Clicks go through to your apps until you pick a drawing tool.
       child.setIgnoreMouseEvents(true);
+      // Controls already open from a window share: now they belong over the shared screen.
+      for (const name of ['jungey-cam', 'jungey-mini']) kid(name)?.setParentWindow(child);
+      const m = kid('jungey-mini');
+      if (m && desk) {
+        const b = m.getBounds();
+        m.setBounds(miniPlace(b.width, b.height));
+      }
       child.webContents.on('input-event', (_e, input) => input.type === 'mouseWheel' && scrollThrough());
       if (desk) child.setBounds(desk.bounds);
     }
