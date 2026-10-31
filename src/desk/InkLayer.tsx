@@ -124,19 +124,26 @@ export function InkLayer() {
       const now = performance.now();
       const s = useDesk.getState();
       const off = s.offset;
-      if (s.marks !== cached || off !== cachedOffset) {
+      // The cache is three screens tall (one above, one below), drawn at `cachedOffset`; while the
+      // page scrolls it just slides, and is drawn again only when the marks change, the page
+      // moves sideways, or it has slid most of a screen.
+      const H = c.height / dpr;
+      const slide = { x: off.x - cachedOffset.x, y: off.y - cachedOffset.y };
+      if (s.marks !== cached || slide.x !== 0 || Math.abs(slide.y) > H * 0.8) {
         cctx.setTransform(1, 0, 0, 1, 0, 0);
         cctx.clearRect(0, 0, cache.width, cache.height);
-        for (const m of s.marks) drawMark(cctx, m, dpr, false, off);
+        const at = { x: off.x, y: off.y + H };
+        for (const m of s.marks) drawMark(cctx, m, dpr, false, at);
         cached = s.marks;
         cachedOffset = off;
+        slide.x = slide.y = 0;
       }
       let animating = false;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.globalAlpha = s.clearing ? clamp(1 - (now - s.clearing) / 250, 0, 1) : 1;
       if (s.clearing) animating = true;
-      ctx.drawImage(cache, 0, 0);
+      ctx.drawImage(cache, 0, Math.round((slide.y - H) * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, off.x * dpr, off.y * dpr);
       for (const m of s.marks) {
         if (m.kind !== 'stamp') continue;
@@ -162,7 +169,8 @@ export function InkLayer() {
     const resize = () => {
       dpr = view.devicePixelRatio || 1;
       c.width = cache.width = Math.round(view.innerWidth * dpr);
-      c.height = cache.height = Math.round(view.innerHeight * dpr);
+      c.height = Math.round(view.innerHeight * dpr);
+      cache.height = c.height * 3;
       cached = null;
       kick();
     };

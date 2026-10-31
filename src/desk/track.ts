@@ -11,7 +11,8 @@ export interface Rect {
   h: number;
 }
 
-const SCALE = 0.5;
+/** Frames are compared at half size: plenty for page text, and four times less work. */
+export const SCALE = 0.5;
 /** Furthest a page may move between two frames and still be followed, in screen px. */
 const REACH = 480;
 const MARGIN = 120;
@@ -19,21 +20,22 @@ const MARGIN = 120;
 const STEP = 3;
 
 export class ScrollTracker {
-  private canvas = document.createElement('canvas');
+  private canvas = new OffscreenCanvas(1, 1);
   private ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
+  private lastFind = -Infinity;
   private prev: Uint8Array | null = null;
   private w = 0;
   private h = 0;
   /** What the page looked like around the marks, and where they were then (half-scale px). */
   private anchor: { tpl: Uint8Array; tw: number; th: number; tx: number; ty: number; rx: number; ry: number } | null = null;
   private sinceAnchor = 0;
-  private searches = 0;
   /** What the last comparison saw (for diagnostics). */
   last: { still: number; dx: number; dy: number; e: number; dys: number[]; dxs: number[] } | null = null;
 
   reset() {
     this.prev = null;
     this.anchor = null;
+    this.lastFind = -Infinity;
   }
 
   /** Remember the page around the marks (fully on screen, textured enough to find again). */
@@ -83,7 +85,7 @@ export class ScrollTracker {
    * Check the remembered spot near where the marks are now expected; if they have slipped (a jump
    * too big to follow, or drift), say how far to move them. Searches the whole frame when needed.
    */
-  private verify(cur: Uint8Array, rx: number, ry: number): { dx: number; dy: number } | null {
+  private verify(cur: Uint8Array, rx: number, ry: number, urgent = false): { dx: number; dy: number } | null {
     if (!this.anchor) return null;
     const ex = this.expected(rx, ry);
     const here = this.costAt(cur, ex.x, ex.y);
@@ -96,6 +98,10 @@ export class ScrollTracker {
       }
       return bx !== ex.x || by !== ex.y ? { dx: bx - ex.x, dy: by - ex.y } : null;
     }
+    // The whole-screen search is the expensive part: a few times a second is plenty.
+    const now = performance.now();
+    if (!urgent && now - this.lastFind < 250) return null;
+    this.lastFind = now;
     const at = this.find(cur);
     return at ? { dx: at.x - ex.x, dy: at.y - ex.y } : null;
   }
@@ -152,7 +158,7 @@ export class ScrollTracker {
    * The page's movement since the last call, in screen px, or null when it didn't move (or
    * what changed doesn't look like scrolling). `region` is where the marks are, in screen px.
    */
-  update(video: HTMLVideoElement, screenW: number, screenH: number, region: Rect): { dx: number; dy: number } | null {
+  update(video: CanvasImageSource, screenW: number, screenH: number, region: Rect): { dx: number; dy: number } | null {
     const w = Math.ceil(screenW * SCALE), h = Math.ceil(screenH * SCALE);
     if (w !== this.w || h !== this.h) {
       this.canvas.width = this.w = w;
@@ -250,9 +256,8 @@ export class ScrollTracker {
     // The marks as they are now (half-scale px), and whether they are all on screen.
     const rx = region.x * s, ry = region.y * s, rw = region.w * s, rh = region.h * s;
     const visible = rx >= 0 && ry >= 0 && rx + rw <= w && ry + rh <= h;
-    if (!visible && this.anchor && this.searches++ % 4 === 0) {
-      // Out of view: watch for the remembered spot coming back and put the marks right there
-      // (a whole-screen search, so every 4th frame is plenty).
+    if (!visible && this.anchor) {
+      // Out of view: watch for the remembered spot coming back and put the marks right there.
       const fix = this.verify(cur, rx, ry);
       if (fix) {
         this.last = { still, dx: fix.dx / s, dy: fix.dy / s, e: -1, dys, dxs };
@@ -289,7 +294,8 @@ export class ScrollTracker {
     const ok = best.e <= still * 0.55;
     if (this.anchor) {
       // Trust the remembered spot over a frame-to-frame guess (a jump may be too big to follow).
-      const fix = this.verify(cur, rx + (ok ? best.dx : 0), ry + (ok ? best.dy : 0));
+      // Right after the page moved, a lost spot means a jump: search now, not in a while.
+      const fix = this.verify(cur, rx + (ok ? best.dx : 0), ry + (ok ? best.dy : 0), true);
       const dx = (ok ? best.dx : 0) + (fix?.dx ?? 0), dy = (ok ? best.dy : 0) + (fix?.dy ?? 0);
       return dx || dy ? { dx: dx / s, dy: dy / s } : null;
     }

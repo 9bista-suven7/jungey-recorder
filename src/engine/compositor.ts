@@ -12,7 +12,7 @@ import { liveNodes, useDiagramUI } from '../diagram/ui';
 import { boundsOf } from '../diagram/geometry';
 import { presented } from '../diagram/steps';
 import { deskActions, useDesk } from '../desk/state';
-import { ScrollTracker } from '../desk/track';
+import { SCALE } from '../desk/track';
 import { marksRegion } from '../desk/geometry';
 import type { DiagramNode, EnterKind, FxKind, Item, Page, Pattern, View } from '../types';
 
@@ -344,50 +344,60 @@ class Compositor {
     }
   }
 
-  private tracker = new ScrollTracker();
-  private trackedAt = 0;
+  private tracker: Worker | null = null;
+  private tracking = false;
+  private trackerFresh = true;
   private frameLoop = false;
 
   /**
-   * Presenting with marks on the screen: keep them on the page as it scrolls. Runs on every new
-   * frame of the shared screen (a timer can keep reading the same picture while this window is
-   * minimised), falling back to the render loop where frame callbacks don't exist.
+   * Presenting with marks on the screen: keep them on the page as it scrolls. Each new frame of
+   * the shared screen is shrunk on the GPU and measured in a worker, so neither this loop nor
+   * the recording waits for it. A frame that arrives while the last is still measured is skipped.
    */
-  private followPage(now: number) {
+  private followPage() {
     const v = media.screenVideo;
-    if ('requestVideoFrameCallback' in v) {
-      if (this.frameLoop) return;
-      this.frameLoop = true;
-      const tick = () => {
-        this.trackFrame(performance.now());
-        v.requestVideoFrameCallback(tick);
-      };
+    if (this.frameLoop || !('requestVideoFrameCallback' in v) || typeof createImageBitmap === 'undefined') return;
+    this.frameLoop = true;
+    const tick = () => {
+      this.trackFrame();
       v.requestVideoFrameCallback(tick);
-      return;
-    }
-    if (now - this.trackedAt < 50) return;
-    this.trackedAt = now;
-    this.trackFrame(now);
+    };
+    v.requestVideoFrameCallback(tick);
   }
 
-  private trackFrame(now: number) {
+  private trackFrame() {
     const d = useDesk.getState();
     if (!d.on || !d.follow || !d.marks.length || !d.bounds || !media.screenReady) {
-      this.tracker.reset();
+      if (!this.trackerFresh) this.tracker?.postMessage({ reset: true });
+      this.trackerFresh = true;
       return;
     }
-    const region = marksRegion(d.marks, d.offset);
-    const shift = this.tracker.update(media.screenVideo, d.bounds.width, d.bounds.height, region);
-    if (shift) deskActions.scrolled(shift.dx, shift.dy);
-    if (import.meta.env.DEV) {
-      const log = ((window as unknown as { __track?: unknown[] }).__track ??= []);
-      log.push({ t: Math.round(now), ...(this.tracker.last ?? {}), ok: !!shift, region });
-      if (log.length > 400) log.splice(0, log.length - 400);
+    if (this.tracking) return;
+    if (!this.tracker) {
+      this.tracker = new Worker(new URL('../desk/trackWorker.ts', import.meta.url), { type: 'module' });
+      this.tracker.onmessage = (e: MessageEvent<{ shift: { dx: number; dy: number } | null; last: unknown }>) => {
+        this.tracking = false;
+        const { shift, last } = e.data;
+        if (shift && useDesk.getState().on) deskActions.scrolled(shift.dx, shift.dy);
+        if (import.meta.env.DEV) {
+          const log = ((window as unknown as { __track?: unknown[] }).__track ??= []);
+          log.push({ t: Math.round(performance.now()), ...(last as object), ok: !!shift });
+          if (log.length > 400) log.splice(0, log.length - 400);
+        }
+      };
+      this.tracker.onerror = () => (this.tracking = false);
     }
+    const { width: W, height: H } = d.bounds;
+    const region = marksRegion(d.marks, d.offset);
+    this.tracking = true;
+    this.trackerFresh = false;
+    createImageBitmap(media.screenVideo, { resizeWidth: Math.ceil(W * SCALE), resizeHeight: Math.ceil(H * SCALE), resizeQuality: 'low' })
+      .then((frame) => this.tracker!.postMessage({ frame, screenW: W, screenH: H, region }, [frame]))
+      .catch(() => (this.tracking = false));
   }
 
   render(now: number) {
-    this.followPage(now);
+    this.followPage();
     const s = useStore.getState();
     const p = s.project;
     if (!p) return;
